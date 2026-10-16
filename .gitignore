@@ -10,6 +10,7 @@ data/raw/*
 data/npz/*
 runs/*
 sweeps/
+data/manifest.json
 !data/raw/.gitkeep
 !data/npz/.gitkeep
 !runs/.gitkeep

@@ -52,7 +52,8 @@ The dashboard never runs backtest logic. It writes a config, starts the runner a
 │   └── npz/               converted hftbacktest files (gitignored)
 ├── runs/                  one folder per backtest run (gitignored)
 ├── mmlab/                 the library
-│   ├── data/              download, convert, validate
+│   ├── settings.py        data paths (MMLAB_DATA_DIR override)
+│   ├── data/              download, instruments, convert, validate, manifest, CLI
 │   ├── strategies/        naive, avellaneda, glft, alpha_skew
 │   ├── calibration/       volatility, intensity (A, k)
 │   └── analytics/         metrics, markouts
@@ -61,7 +62,35 @@ The dashboard never runs backtest logic. It writes a config, starts the runner a
 └── tests/                 pytest sanity and unit tests
 ```
 
-Empty directories (`configs/`, `dashboard/pages/`, `tests/`) exist locally but are not tracked by git until they hold files.
+Empty directories (`configs/`, `dashboard/pages/`) exist locally but are not tracked by git until they hold files.
+
+## Data pipeline (Phase 1)
+
+```bash
+uv run python -m mmlab.data download --symbol BTCUSDT --from 2026-09-01 --to 2026-09-02
+uv run python -m mmlab.data ingest --symbol BTCUSDT --date 2026-09-01 --max-memory-gb 24
+```
+
+- `download` fetches `trades` and `incremental_book_L2` for `binance-futures`. `--to` is exclusive. Files land in `data/raw/` using Tardis naming (`binance-futures_trades_2026-09-01_BTCUSDT.csv.gz`). Free first-of-month days reportedly need no key (unverified); set `TARDIS_API_KEY` for other days.
+- `ingest` converts one day to `data/npz/<symbol>_<yyyymmdd>.npz`, validates it, and upserts `data/manifest.json`. Tick and lot size come from `--tick-size` and `--lot-size`, or from Binance `exchangeInfo` when omitted. The exit code is 1 when validation fails; the manifest entry is still written with its problems listed.
+- Trades are passed to the converter before the book file, as hftbacktest requires.
+- Tardis includes a start-of-day book snapshot, so end-of-day snapshots are not needed to start a day. `convert.write_eod_snapshot` exists for chaining consecutive days if ever wanted.
+- Moving data off the repo drive: set `MMLAB_DATA_DIR` to any folder. Manifest paths are stored relative to it.
+
+### Memory sizing
+
+`convert.count_rows` streams each gzipped CSV and counts rows and snapshot rows. The event buffer is `trade rows + book rows + 2 x snapshot rows`, which is an exact upper bound. Each event is 64 bytes. `estimated_peak_gb` multiplies the buffer by a rough factor of 4 for the CSV frame and sort copies; that factor is not yet confirmed on a real day. Use `--max-memory-gb` to refuse a conversion that would exceed what a machine can hold.
+
+### Validation
+
+| Check | Meaning |
+|---|---|
+| `max_gap_s` | Largest gap between consecutive events by local timestamp. Default limit 60 s |
+| `broken_samples` | Samples (default every 10 ms) where one side of the book is empty or best bid is at or above best ask, after the book first has both sides. Default limit 1e-4 of samples |
+| `spread_ticks_*` | Spread distribution in ticks over valid samples |
+| `trades_per_min_*` | Trade rate per minute across the day |
+
+hftbacktest repairs a crossed book by deleting the stale levels on the opposite side, so a true crossing is never visible as `best bid >= best ask`. It shows up as a wiped side, which `broken_samples` counts. A crossing that leaves both sides non-empty goes undetected by this sampled check; an event-level order book check would be needed to catch it.
 
 ## Modules
 
@@ -70,10 +99,14 @@ Empty directories (`configs/`, `dashboard/pages/`, `tests/`) exist locally but a
 | `scripts/phase0_convert.py` | Convert the sample Binance feed dumps to `.npz` and build the end-of-day snapshot | 0 | done |
 | `scripts/phase0_tutorial.py` | hftbacktest Getting Started: BBO printer, symmetric GTX quoter, `LinearAssetRecord` stats | 0 | done |
 | `mmlab/__init__.py` and subpackage `__init__.py` files | Empty package markers | 0 | done |
+| `mmlab/settings.py` | Data paths; `MMLAB_DATA_DIR` moves `raw/`, `npz/` and `manifest.json` to another drive | 1 | done |
+| `mmlab/data/download.py` | Tardis download via `tardis_dev.download_datasets`; Tardis file naming; key from `TARDIS_API_KEY` | 1 | done, untested against the real service |
+| `mmlab/data/instruments.py` | Tick and lot size from Binance public `exchangeInfo` | 1 | done, untested against the real service |
+| `mmlab/data/convert.py` | Tardis CSV to `.npz`; counts CSV rows first and sizes buffers exactly; optional memory guard; optional end-of-day snapshot | 1 | done, untested on a full day |
+| `mmlab/data/validate.py` | Event statistics (count, span, largest gap, trades per minute) and a sampled book replay (spread in ticks, broken samples); pass/fail limits | 1 | done |
+| `mmlab/data/manifest.py` | `data/manifest.json` read, atomic upsert, version check | 1 | done |
+| `mmlab/data/__main__.py` | CLI: `download` and `ingest` (convert, validate, register) | 1 | done |
 | `mmlab/config.py` | Pydantic `RunConfig` / `ExecConfig` | 2 | planned |
-| `mmlab/data/download.py` | Tardis download | 1 | planned |
-| `mmlab/data/convert.py` | CSV to `.npz` plus end-of-day snapshots | 1 | planned |
-| `mmlab/data/validate.py` | Data integrity checks, writes `data/manifest.json` | 1 | planned |
 | `mmlab/strategies/naive.py` | Symmetric quoter | 2 | planned |
 | `mmlab/run.py` | CLI: `python -m mmlab.run --config ...`; builds backtest, runs strategy, saves artifacts | 2 | planned |
 | `mmlab/analytics/metrics.py` | Net/gross PnL, Sharpe, drawdown, and others (plan.md Section 7) | 2 | planned |
@@ -94,6 +127,8 @@ Gitignored, so present only on the machine that created them.
 | `data/npz/btcusdt_20240808.npz`, `btcusdt_20240809.npz` | Converted feed. Each covers only about 5 minutes |
 | `data/npz/btcusdt_20240808_eod.npz` | End-of-day snapshot of 08-08, used as the initial snapshot for 08-09 |
 
+No Tardis day has been downloaded yet; Phase 1 code was written and tested on synthetic data first. `data/manifest.json` is gitignored because its entries describe machine-local files.
+
 Instrument parameters for BTCUSDT: tick size 0.1, lot size 0.001. Always re-check against exchange info for other symbols.
 
 ## Interfaces (frozen once Phase 2 lands)
@@ -112,7 +147,14 @@ runs/<date>_<time>_<name>_<hash>/
 
 The recorder (hftbacktest 2.4.4) exposes `timestamp, price, position, balance, fee, num_trades, trading_volume, trading_value`.
 
+## Tests
+
+`uv run pytest` runs everything with synthetic data; no downloads, no network, no real data needed. `tests/conftest.py` writes tiny Tardis-format `.csv.gz` files (one bid, one ask, an update per second, a trade every 5 seconds) with optional gaps and a book-wiping crossing. Test files: `test_settings`, `test_data_download` (download is monkeypatched), `test_data_instruments`, `test_data_convert`, `test_data_validate`, `test_data_manifest`, `test_data_cli` (full ingest end to end).
+
 ## Library notes
+
+- `tardis_dev` 5.x exposes `download_datasets`, not the `datasets.download` shown in older examples and in plan.md.
+- `wait_next_feed` returns 2 per market feed and 1 at end of data; the last event is not delivered before the end-of-data return.
 
 - `BacktestAsset.constant_latency()` is deprecated in 2.4.4; use `constant_order_latency()`.
 - `Stats.summary()` returns a Polars DataFrame and does not print.

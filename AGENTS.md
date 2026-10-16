@@ -22,7 +22,7 @@ The full phased build guide is [plan.md](plan.md). Running notes, decisions, and
 
 ## Current status
 
-Phase 0 (setup and theory). The environment, repository skeleton, and the hftbacktest Getting Started tutorial are done. No `mmlab` code exists yet; `mmlab/` holds empty packages. The authoritative status is in [CONTEXT.md](CONTEXT.md).
+Phase 0 (setup and theory) is done except the reading and the concept write-up. Phase 1 code is written and tested on synthetic data: `mmlab/settings.py` and `mmlab/data/` (download, instruments, convert, validate, manifest, CLI). It has not yet been run on a real Tardis day. The authoritative status is in [CONTEXT.md](CONTEXT.md).
 
 ## Commands
 
@@ -33,6 +33,8 @@ uv sync                                      # install dependencies
 uv run pytest                                # tests
 uv run ruff check .                          # lint
 uv run ruff format .                         # format
+uv run python -m mmlab.data download --symbol BTCUSDT --from 2026-09-01 --to 2026-09-02
+uv run python -m mmlab.data ingest --symbol BTCUSDT --date 2026-09-01   # convert, validate, register
 uv run python scripts/phase0_convert.py      # convert sample data to npz
 uv run python scripts/phase0_tutorial.py     # run the Phase 0 tutorial
 uv run streamlit run dashboard/app.py        # dashboard (Phase 3, not built yet)

@@ -21,9 +21,11 @@ uv run python -c "import hftbacktest, numba, polars, streamlit; print('ok')"
 ## Common commands
 
 ```bash
+uv run python -m mmlab.data download --symbol BTCUSDT --from 2026-09-01 --to 2026-09-02
+uv run python -m mmlab.data ingest --symbol BTCUSDT --date 2026-09-01
 uv run pytest                           # sanity tests
 uv run ruff check .                     # lint
 uv run streamlit run dashboard/app.py   # dashboard (Phase 3)
 ```
 
-Data (`data/raw`, `data/npz`) and run artifacts (`runs/`) are gitignored.
+Data (`data/raw`, `data/npz`) and run artifacts (`runs/`) are gitignored. To keep data on another drive, set `MMLAB_DATA_DIR` to that folder. Tardis downloads outside the free first-of-month days need `TARDIS_API_KEY`.
