@@ -1,12 +1,4 @@
-﻿"""Phase 0: hftbacktest Getting Started tutorial (v2.x API), run end-to-end.
-
-Source: https://hftbacktest.readthedocs.io/en/latest/tutorials/Getting%20Started.html
-Run phase0_convert.py first.
-"""
-
 import numpy as np
-from numba import njit
-
 from hftbacktest import (
     GTX,
     LIMIT,
@@ -15,38 +7,45 @@ from hftbacktest import (
     Recorder,
 )
 from hftbacktest.stats import LinearAssetRecord
+from numba import njit
 
 DATA = ["data/npz/btcusdt_20240809.npz"]
 SNAPSHOT = "data/npz/btcusdt_20240808_eod.npz"
 
 
+# build a fresh asset, since a backtest object cannot be reused
 def build_asset() -> BacktestAsset:
     return (
         BacktestAsset()
         .data(DATA)
         .initial_snapshot(SNAPSHOT)
         .linear_asset(1.0)
-        .constant_order_latency(10_000_000, 10_000_000)  # 10 ms entry / response
+        .constant_order_latency(10_000_000, 10_000_000)
         .risk_adverse_queue_model()
         .no_partial_fill_exchange()
-        .trading_value_fee_model(0.0002, 0.0007)  # maker, taker
+        .trading_value_fee_model(0.0002, 0.0007)
         .tick_size(0.1)
         .lot_size(0.001)
     )
 
 
+# print best bid and ask every 60 seconds
 @njit
 def print_bbo(hbt):
     while hbt.elapse(60 * 1e9) == 0:
         depth = hbt.depth(0)
         print(
-            "current_timestamp:", hbt.current_timestamp,
-            ", best_bid:", np.round(depth.best_bid, 1),
-            ", best_ask:", np.round(depth.best_ask, 1),
+            "current_timestamp:",
+            hbt.current_timestamp,
+            ", best_bid:",
+            np.round(depth.best_bid, 1),
+            ", best_ask:",
+            np.round(depth.best_ask, 1),
         )
     return True
 
 
+# quote 5 ticks either side of mid with post-only orders, once per second
 @njit
 def submit_order_stats(hbt, recorder):
     buy_order_id = 1
@@ -75,7 +74,6 @@ def submit_order_stats(hbt, recorder):
 
 
 def main() -> None:
-    # A backtest object cannot be reused: build a fresh one per run.
     print("=== BBO every 60 s ===")
     hbt = HashMapMarketDepthBacktest([build_asset()])
     print_bbo(hbt)
@@ -92,7 +90,6 @@ def main() -> None:
     print("rows:", len(rec))
 
     stats = LinearAssetRecord(rec).stats()
-    # summary() returns a DataFrame (it only displays itself in a notebook)
     print(stats.summary())
 
 

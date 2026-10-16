@@ -12,6 +12,7 @@ Phase 0 — environment, repo, skeleton and hftbacktest Getting Started tutorial
 - Python 3.12 pinned via `.python-version` (uv otherwise picks 3.15, which has no wheels for several dependencies).
 - Native Windows, no WSL. Fall back to WSL2 only if hftbacktest/Numba misbehaves.
 - Remote: https://github.com/Sh1ljo/MMCrypto.git (branch `main`).
+- Agent docs: `AGENTS.md` is the entry point (`CLAUDE.md` imports it), with `docs/CODING.md` (one-line comments above code, no trailing or multi-line comments) and `docs/INFRASTRUCTURE.md` (what exists). Docs must be updated with every change; this is rule 11 in `AGENTS.md`.
 
 ## Artifact format
 

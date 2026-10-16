@@ -1,9 +1,3 @@
-"""Phase 0: convert the hftbacktest sample Binance feed dumps to .npz.
-
-Mirrors the hftbacktest Data Preparation tutorial. 08-08 has no prior day, so it
-gets no initial snapshot; its end-of-day snapshot seeds 08-09.
-"""
-
 from pathlib import Path
 
 from hftbacktest.data.utils import binancefutures
@@ -15,6 +9,7 @@ TICK_SIZE = 0.1
 LOT_SIZE = 0.001
 
 
+# convert both sample days to npz; the 08-08 end-of-day snapshot seeds 08-09
 def main() -> None:
     NPZ.mkdir(parents=True, exist_ok=True)
 

@@ -2,6 +2,13 @@
 
 A crypto market-making research lab: limit-order-book simulation on perpetuals (hftbacktest), with a Streamlit dashboard for running and analysing backtests. See [plan.md](plan.md) for the phased build guide.
 
+## Documentation
+
+- [AGENTS.md](AGENTS.md): entry point for AI agents and contributors, with the rules that always apply
+- [docs/CODING.md](docs/CODING.md): code style and comment rules
+- [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md): layout, modules, data flow, current status
+- [CONTEXT.md](CONTEXT.md): running notes, decisions, results
+
 ## Setup
 
 Requires [uv](https://docs.astral.sh/uv/). Python 3.12 is pinned in `.python-version`.
