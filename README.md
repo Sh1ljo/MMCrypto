@@ -22,7 +22,7 @@ uv run python -c "import hftbacktest, numba, polars, streamlit; print('ok')"
 
 ```bash
 uv run python -m mmlab.data download --symbol BTCUSDT --from 2026-09-01 --to 2026-09-02
-uv run python -m mmlab.data ingest --symbol BTCUSDT --date 2026-09-01
+uv run python -m mmlab.data ingest --symbol BTCUSDT --date 2026-09-01 --max-memory-gb 8
 uv run pytest                           # sanity tests
 uv run ruff check .                     # lint
 uv run streamlit run dashboard/app.py   # dashboard (Phase 3)

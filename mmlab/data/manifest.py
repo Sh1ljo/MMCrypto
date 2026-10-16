@@ -6,11 +6,11 @@ from pydantic import BaseModel
 
 from mmlab.data.validate import ValidationReport
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 
 
 class ManifestEntry(BaseModel):
-    path: str
+    paths: list[str]
     symbol: str
     day: date
     tick_size: float
@@ -39,10 +39,11 @@ def load_manifest(path: Path) -> Manifest:
     return manifest
 
 
-# replace the entry with the same path or append a new one, then write atomically
+# replace the entry for the same symbol and day or append a new one, then write atomically
 def upsert_entry(path: Path, entry: ManifestEntry) -> Manifest:
     manifest = load_manifest(path)
-    manifest.files = [f for f in manifest.files if f.path != entry.path] + [entry]
+    key = (entry.symbol, entry.day)
+    manifest.files = [f for f in manifest.files if (f.symbol, f.day) != key] + [entry]
     manifest.files.sort(key=lambda f: (f.symbol, f.day))
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")

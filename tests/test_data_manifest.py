@@ -35,7 +35,7 @@ def _report() -> ValidationReport:
 
 def _entry(path: str, day: date, problems: list[str] | None = None) -> ManifestEntry:
     return ManifestEntry(
-        path=path,
+        paths=[path],
         symbol="BTCUSDT",
         day=day,
         tick_size=0.1,
@@ -56,15 +56,15 @@ def test_upsert_round_trips_and_sorts_by_day(tmp_path: Path):
 
     manifest = load_manifest(path)
 
-    assert [f.path for f in manifest.files] == ["npz/a.npz", "npz/b.npz"]
+    assert [f.paths for f in manifest.files] == [["npz/a.npz"], ["npz/b.npz"]]
     assert manifest.files[0].report == _report()
     assert not list(tmp_path.glob("*.tmp"))
 
 
-def test_upsert_replaces_entry_with_same_path(tmp_path: Path):
+def test_upsert_replaces_entry_for_same_day(tmp_path: Path):
     path = tmp_path / "manifest.json"
     upsert_entry(path, _entry("npz/a.npz", date(2026, 9, 1)))
-    upsert_entry(path, _entry("npz/a.npz", date(2026, 9, 1), problems=["gap"]))
+    upsert_entry(path, _entry("npz/a2.npz", date(2026, 9, 1), problems=["gap"]))
 
     files = load_manifest(path).files
 

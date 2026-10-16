@@ -55,15 +55,19 @@ class ValidationReport(BaseModel):
 def event_stats(events: np.ndarray) -> EventStats:
     if len(events) == 0:
         raise ValueError("event array is empty")
-    local_ts = np.sort(events["local_ts"])
-    start, end = int(local_ts[0]), int(local_ts[-1])
     is_trade = (events["ev"] & EVENT_TYPE_MASK) == TRADE_EVENT
-    trade_ts = events["local_ts"][is_trade]
+    return _event_stats(events["local_ts"], events["local_ts"][is_trade])
+
+
+# statistics from all local timestamps and the trade-only subset
+def _event_stats(all_ts: np.ndarray, trade_ts: np.ndarray) -> EventStats:
+    local_ts = np.sort(all_ts)
+    start, end = int(local_ts[0]), int(local_ts[-1])
     minutes = (end - start) // NS_PER_MIN + 1
     per_minute = np.bincount((trade_ts - start) // NS_PER_MIN, minlength=minutes)
     return EventStats(
-        event_count=len(events),
-        trade_count=int(is_trade.sum()),
+        event_count=len(local_ts),
+        trade_count=len(trade_ts),
         start_ts_ns=start,
         end_ts_ns=end,
         duration_s=(end - start) / NS_PER_S,
@@ -113,9 +117,9 @@ def _build_asset(data, tick_size: float, lot_size: float) -> BacktestAsset:
     )
 
 
-# replay an npz file and summarise the sampled book
+# replay npz files in order and summarise the sampled book
 def book_stats(
-    npz: Path,
+    npz_files: list[Path],
     tick_size: float,
     lot_size: float,
     start_ts_ns: int,
@@ -124,13 +128,14 @@ def book_stats(
 ) -> BookStats:
     max_samples = (end_ts_ns - start_ts_ns) // step_ns + 2
     spreads = np.zeros(max_samples, dtype=np.int32)
-    hbt = HashMapMarketDepthBacktest([_build_asset([str(npz)], tick_size, lot_size)])
+    asset = _build_asset([str(p) for p in npz_files], tick_size, lot_size)
+    hbt = HashMapMarketDepthBacktest([asset])
     try:
         samples, spread_count, broken = replay_book(hbt, step_ns, spreads)
     finally:
         hbt.close()
     if spread_count == 0:
-        raise ValueError(f"no valid two-sided book samples found in {npz}")
+        raise ValueError(f"no valid two-sided book samples found in {npz_files}")
     valid = spreads[:spread_count]
     return BookStats(
         step_ms=step_ns / 1e6,
@@ -145,16 +150,28 @@ def book_stats(
     )
 
 
-# validate one converted file: event statistics plus a sampled book replay
+# validate consecutive converted files as one stream: event statistics plus a sampled book replay
+def validate_files(
+    npz_files: list[Path], tick_size: float, lot_size: float, step_ns: int = DEFAULT_STEP_NS
+) -> ValidationReport:
+    all_ts, trade_ts = [], []
+    for npz in npz_files:
+        with np.load(npz) as archive:
+            events = archive["data"]
+        all_ts.append(events["local_ts"].copy())
+        is_trade = (events["ev"] & EVENT_TYPE_MASK) == TRADE_EVENT
+        trade_ts.append(events["local_ts"][is_trade])
+        del events
+    stats = _event_stats(np.concatenate(all_ts), np.concatenate(trade_ts))
+    del all_ts, trade_ts
+    book = book_stats(npz_files, tick_size, lot_size, stats.start_ts_ns, stats.end_ts_ns, step_ns)
+    return ValidationReport(events=stats, book=book)
+
+
 def validate_file(
     npz: Path, tick_size: float, lot_size: float, step_ns: int = DEFAULT_STEP_NS
 ) -> ValidationReport:
-    with np.load(npz) as archive:
-        events = archive["data"]
-    stats = event_stats(events)
-    del events
-    book = book_stats(npz, tick_size, lot_size, stats.start_ts_ns, stats.end_ts_ns, step_ns)
-    return ValidationReport(events=stats, book=book)
+    return validate_files([npz], tick_size, lot_size, step_ns)
 
 
 # list every limit the report breaks; an empty list means the file passed

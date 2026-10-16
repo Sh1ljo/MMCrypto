@@ -28,9 +28,9 @@ def test_ingest_converts_validates_and_registers(monkeypatch, tmp_path: Path):
     assert main(INGEST_ARGS) == 0
 
     files = load_manifest(settings.manifest_path()).files
-    assert [f.path for f in files] == ["npz/btcusdt_20260901.npz"]
+    assert [f.paths for f in files] == [["npz/btcusdt_20260901_p000.npz"]]
     assert files[0].passed
-    assert (settings.npz_dir() / "btcusdt_20260901.npz").is_file()
+    assert (settings.npz_dir() / "btcusdt_20260901_p000.npz").is_file()
 
 
 def test_ingest_exits_nonzero_when_validation_fails(monkeypatch, tmp_path: Path):

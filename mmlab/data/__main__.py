@@ -4,14 +4,14 @@ from datetime import date
 
 from mmlab import settings
 from mmlab.data import download
-from mmlab.data.convert import convert_day, npz_file_name
+from mmlab.data.convert import convert_day_chunked
 from mmlab.data.instruments import fetch_symbol_filters
 from mmlab.data.manifest import ManifestEntry, upsert_entry
 from mmlab.data.validate import (
     DEFAULT_STEP_NS,
     ValidationLimits,
     check_report,
-    validate_file,
+    validate_files,
 )
 
 
@@ -33,7 +33,10 @@ def _build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--date", dest="day", type=_day, required=True)
     ingest.add_argument("--tick-size", type=float, help="fetched from Binance when omitted")
     ingest.add_argument("--lot-size", type=float, help="fetched from Binance when omitted")
-    ingest.add_argument("--max-memory-gb", type=float, help="refuse to convert above this estimate")
+    ingest.add_argument("--max-memory-gb", type=float, help="refuse any slice estimated above this")
+    ingest.add_argument(
+        "--chunk-hours", type=float, default=1.0, help="convert in slices of this many hours"
+    )
     ingest.add_argument("--step-ms", type=float, default=DEFAULT_STEP_NS / 1e6)
     return parser
 
@@ -53,14 +56,24 @@ def _run_ingest(args: argparse.Namespace) -> int:
     print(f"tick size {tick_size}, lot size {lot_size}")
 
     files = download.expected_files(settings.raw_dir(), args.symbol, args.day)
-    output = settings.npz_dir() / npz_file_name(args.symbol, args.day)
-    plan = convert_day(files.trades, files.book, output, args.max_memory_gb)
-    print(f"converted {plan.buffer_rows} events (estimated peak {plan.estimated_peak_gb:.1f} GB)")
+    result = convert_day_chunked(
+        files.trades,
+        files.book,
+        settings.npz_dir(),
+        args.symbol,
+        args.day,
+        args.chunk_hours,
+        args.max_memory_gb,
+    )
+    print(
+        f"converted up to {result.buffer_rows} events in {len(result.paths)} files "
+        f"(largest slice estimated peak {result.max_chunk_peak_gb:.1f} GB)"
+    )
 
-    report = validate_file(output, tick_size, lot_size, int(args.step_ms * 1e6))
+    report = validate_files(result.paths, tick_size, lot_size, int(args.step_ms * 1e6))
     problems = check_report(report, ValidationLimits())
     entry = ManifestEntry(
-        path=output.relative_to(settings.data_dir()).as_posix(),
+        paths=[p.relative_to(settings.data_dir()).as_posix() for p in result.paths],
         symbol=args.symbol,
         day=args.day,
         tick_size=tick_size,

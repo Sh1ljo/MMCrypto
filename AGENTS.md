@@ -34,7 +34,7 @@ uv run pytest                                # tests
 uv run ruff check .                          # lint
 uv run ruff format .                         # format
 uv run python -m mmlab.data download --symbol BTCUSDT --from 2026-09-01 --to 2026-09-02
-uv run python -m mmlab.data ingest --symbol BTCUSDT --date 2026-09-01   # convert, validate, register
+uv run python -m mmlab.data ingest --symbol BTCUSDT --date 2026-09-01 --max-memory-gb 8   # convert, validate, register
 uv run python scripts/phase0_convert.py      # convert sample data to npz
 uv run python scripts/phase0_tutorial.py     # run the Phase 0 tutorial
 uv run streamlit run dashboard/app.py        # dashboard (Phase 3, not built yet)
