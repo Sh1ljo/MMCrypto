@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Data and run artifacts (large, reproducible from configs)
+data/raw/*
+data/npz/*
+runs/*
+sweeps/
+!data/raw/.gitkeep
+!data/npz/.gitkeep
+!runs/.gitkeep
+
+# Dashboard-generated configs
+configs/_ui/
+
+# Local tooling
+.claude/
+.env

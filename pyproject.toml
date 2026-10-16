@@ -1,0 +1,25 @@
+[project]
+name = "mm-lab"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.5.6",
+    "hftbacktest>=2.4.4",
+    "numba>=0.68.0",
+    "numpy>=2.2.6",
+    "plotly>=7.1.0",
+    "polars>=2.0.0",
+    "pyarrow>=26.0.0",
+    "pydantic>=2.14.1",
+    "scipy>=1.18.1",
+    "statsmodels>=0.15.0",
+    "streamlit>=1.66.0",
+    "tardis-dev>=5.0.1",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.4.0",
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+]
