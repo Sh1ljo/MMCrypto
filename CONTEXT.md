@@ -4,7 +4,7 @@ Running notes for AI sessions. Update at the end of every session.
 
 ## Current phase
 
-Phase 0 — environment, repo, skeleton and tutorial done; reading (Section 4, resources 1-3) and the concept write-up below remain. Phase 1 — code and tests written and run on four real Tardis days (2026-07-01, 08-01, 09-01, 10-01; all passed; chunk boundaries checked on 10-01). Phase 2 — done (see below). Next: Phase 3 dashboard, or Phase 4 markouts and exact fills.
+Phase 0 — environment, repo, skeleton and tutorial done; reading (Section 4, resources 1-3) and the concept write-up below remain. Phase 1 — code and tests written and run on four real Tardis days (2026-07-01, 08-01, 09-01, 10-01; all passed; chunk boundaries checked on 10-01). Phase 2 — done (see below). Phase 3 — Home, Run Backtest and Run Explorer built and checked in a browser (see below); the Data Explorer page is not built and the user's own test of the dashboard is pending. Next: user test of Phase 3, then Phase 4 markouts and exact fills.
 
 ## Decisions
 
@@ -68,10 +68,29 @@ Frozen at version 1 in Phase 2 (`CONFIG_VERSION`). See docs/INFRASTRUCTURE.md, I
 - The 5-tick return over trade is -3.0 bps on all four days, so about -1 bp before fees on top of the 2 bps fee. Fill count and PnL scale with volatility and volume, the per-trade result does not. The sign of the Phase 2 result holds on every day tried.
 - Not yet done: a single run across several days (state between non-consecutive days, per-day metrics), and consecutive days for walk-forward (needs a paid Tardis key).
 
+## Phase 3 (built 2026-10-17, user test pending)
+
+- Built: `dashboard/` (`app.py` router, `home.py`, `lib.py`, `charts.py`, `ui.py`, `pages/1_Run_Backtest.py`, `pages/2_Run_Explorer.py`), `.streamlit/config.toml`, and tests `test_dashboard_lib`, `test_dashboard_charts`, `test_dashboard_pages`. 98 tests pass. No change to `mmlab/`, so the config schema and run artifact format are unchanged (still version 1).
+- Start it with `uv run python -m streamlit run dashboard/app.py`. The bare `streamlit run` fails to import `mmlab` because the project is not installed as a package (Streamlit adds only the script's folder to `sys.path`; `python -m` adds the working directory).
+- Checked in Edge through Playwright (throwaway venv in the session scratchpad, not in the repo): all three pages in light and dark, hover tooltip, linked drag zoom, and a run launched from the form. A 3-file prefix of 2026-07-01 ran in 13.8 s and a 1-file prefix in 9.2 s; "Open in explorer" landed on the new run. Reads and figure builds take under 150 ms on a full day with 31,572 fills.
+- Bugs found while building and fixed: a day stored as one file crashed the file slider (min equals max); 8,000 fill markers hid the quote lines (fills are now drawn under the lines, 70% opaque); the quoted-spread histogram collapsed to a hairline when a rare tail stretched the axis (axis is now cut at p99 and the title says so); the first page was labelled "app" (now `st.navigation` with Home).
+- Decisions: buys and sells are blue and orange with different marker shapes, not green and red (colour-blind safety, and red and green read as good and bad); the run form replays a prefix of one day's files rather than any selection, because a later file alone starts with an empty book; several days in one run stay unavailable until state across non-consecutive days is checked.
+- Limits worth knowing: the log shows no per-step progress because the replay is one compiled loop (adding progress would mean running `naive_mm` in chunks, a change to the Phase 2 runner); Sharpe is `n/a` under 2 hours of data; KPI rows are whole-run, not for the selected window; the markout KPIs wait for Phase 4.
+- Two test runs made while checking sit in `runs/` (`naive_hs5_20260701_3f`, `naive_hs5_20260701_1f`); they are gitignored and safe to delete. The 3-file one is a high-turnover 5-tick quoter on 2026-07-01 and loses 157 net over 3 hours (gross -59, fees 98), the same sign as every other run.
+- Not built: Data Explorer (order-book heatmap, spread, trade intensity), Compare (Phase 5 and later) and Sweeps (Phase 7).
+
+### Friendlier dashboard and Strategies page (2026-10-17, same day)
+
+- Asked for: explain everything with a `?` icon, keep text light, and a page explaining the strategies with formulas. Done: every input, KPI, section heading and Home column has a tooltip from `dashboard/help_text.py` (a test fails if a widget lacks one); permanent captions are gone; the Run Backtest execution settings (fees, delays, queue) sit in a collapsed expander; navigation is grouped into Lab and Learn.
+- New `Strategies` page: tabs for the naive quoter (built), Avellaneda–Stoikov, GLFT and alpha skew (planned, formulas copied from plan.md Section 5 and 6), the metric formulas, and a glossary. The naive tab has an interactive "Try it" calculator that draws the bid and ask the strategy would place.
+- Change in `mmlab/`: the two quoting rules were pulled out of `naive_mm` into `quote_ticks` and `quote_sides` so the calculator calls the strategy's own code (as plain Python through `.py_func`, so the dashboard compiles nothing). Behaviour is unchanged: a full real day (BTCUSDT 2026-10-01, 5 ticks) was re-run and every metric, all 863,992 timeseries rows and all fill rows are identical to the earlier run. Config schema and artifact format are untouched.
+- 128 tests pass (30 more). Checked in Edge again: every tab of the Strategies page, the new Run Backtest layout, a hover over a `?` icon, and the Explorer.
+
 ## Known issues
 
 - hftbacktest 2.4.4: `BacktestAsset.constant_latency()` is deprecated; use `constant_order_latency()`. plan.md Section 2.2 still says `constant_latency`; use the new name when building `mmlab/run.py`.
 - `Stats.summary()` returns a polars DataFrame and does not print; wrap in `print()` outside notebooks.
+- Dashboard: `st.context.theme.type` can be wrong for a moment after first load or a theme change, so chart colours may briefly use the other mode's palette.
 - Converter reports `local_timestamp is ahead of exch_timestamp by ~1.27 s` on the sample files and corrects it. Relevant to Phase 4 feed-latency analysis (the correction shifts the latency baseline).
 
 ## Results so far

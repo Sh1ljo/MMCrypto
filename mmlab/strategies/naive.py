@@ -21,6 +21,23 @@ def _order_id(side_is_buy, price_tick):
     return np.uint64(price_tick * 2 + (0 if side_is_buy else 1))
 
 
+# target ticks of the two quotes: half_spread_ticks from mid, never inside the best bid and ask
+@njit
+def quote_ticks(best_bid_tick, best_ask_tick, half_spread_ticks):
+    mid_tick = (best_bid_tick + best_ask_tick) / 2.0
+    bid_tick = np.int64(min(np.floor(mid_tick - half_spread_ticks), best_bid_tick))
+    ask_tick = np.int64(max(np.ceil(mid_tick + half_spread_ticks), best_ask_tick))
+    return bid_tick, ask_tick
+
+
+# a side stops quoting when one more fill of order_qty would pass the position limit
+@njit
+def quote_sides(position, order_qty, max_position):
+    can_buy = position + order_qty <= max_position + POSITION_EPS
+    can_sell = -position + order_qty <= max_position + POSITION_EPS
+    return can_buy, can_sell
+
+
 # cancel resting quotes that are no longer at the target tick
 @njit
 def _cancel_stale(hbt, bid_tick, ask_tick):
@@ -55,10 +72,10 @@ def naive_mm(hbt, recorder, quotes_out, half_spread_ticks, order_qty, max_positi
 
         position = hbt.position(0)
         mid_tick = (depth.best_bid_tick + depth.best_ask_tick) / 2.0
-        bid_tick = np.int64(min(np.floor(mid_tick - half_spread_ticks), depth.best_bid_tick))
-        ask_tick = np.int64(max(np.ceil(mid_tick + half_spread_ticks), depth.best_ask_tick))
-        can_buy = position + order_qty <= max_position + POSITION_EPS
-        can_sell = -position + order_qty <= max_position + POSITION_EPS
+        bid_tick, ask_tick = quote_ticks(
+            depth.best_bid_tick, depth.best_ask_tick, half_spread_ticks
+        )
+        can_buy, can_sell = quote_sides(position, order_qty, max_position)
 
         _cancel_stale(
             hbt, bid_tick if can_buy else NO_BID_TICK, ask_tick if can_sell else NO_ASK_TICK

@@ -26,7 +26,9 @@ uv run python -m mmlab.data ingest --symbol BTCUSDT --date 2026-09-01 --max-memo
 uv run python -m mmlab.run --config configs/naive_btcusdt.json   # one backtest, writes runs/<id>/
 uv run pytest                           # sanity tests
 uv run ruff check .                     # lint
-uv run streamlit run dashboard/app.py   # dashboard (Phase 3)
+uv run python -m streamlit run dashboard/app.py   # dashboard at http://localhost:8501
 ```
+
+The dashboard has four pages: **Home** (every run folder, select one to open it), **Run Backtest** (pick a registered day, strategy and execution settings, watch the run), **Run Explorer** (KPIs, price, position and equity panels, distributions) and **Strategies** (what each strategy does, with formulas, a quote calculator and a glossary). Hover the `?` icons for a short explanation of anything on screen. It needs at least one ingested day in `data/manifest.json`. Run it with `python -m streamlit`, not the bare `streamlit` command: `mmlab` is not installed as a package, and `python -m` is what puts the repository root on the import path.
 
 Data (`data/raw`, `data/npz`) and run artifacts (`runs/`) are gitignored. To keep data on another drive, set `MMLAB_DATA_DIR` to that folder. Tardis downloads outside the free first-of-month days need `TARDIS_API_KEY`.

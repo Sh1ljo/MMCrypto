@@ -22,7 +22,7 @@ The full phased build guide is [plan.md](plan.md). Running notes, decisions, and
 
 ## Current status
 
-Phase 0 (setup and theory) is done except the reading and the concept write-up. Phase 1 (data pipeline, `mmlab/data/`) is done and has run on one real Tardis day (BTCUSDT 2026-10-01); more days are still to download. Phase 2 is done: `mmlab/config.py`, `mmlab/strategies/naive.py`, `mmlab/analytics/metrics.py` and the runner `mmlab/run.py` produce a run folder, and the Phase 2 sanity tests pass. The first full-day naive result is a loss. The authoritative status is in [CONTEXT.md](CONTEXT.md).
+Phase 0 (setup and theory) is done except the reading and the concept write-up. Phase 1 (data pipeline, `mmlab/data/`) is done and has run on one real Tardis day (BTCUSDT 2026-10-01); more days are still to download. Phase 2 is done: `mmlab/config.py`, `mmlab/strategies/naive.py`, `mmlab/analytics/metrics.py` and the runner `mmlab/run.py` produce a run folder, and the Phase 2 sanity tests pass. The first full-day naive result is a loss. Phase 3 (dashboard, `dashboard/`) is built for Home, Run Backtest, Run Explorer and a Strategies page (rules, formulas and a quote calculator), with a `?` tooltip on every input and number, and was checked in a real browser, including a run launched from the page; the Data Explorer page is not built and the user's own test is pending. The authoritative status is in [CONTEXT.md](CONTEXT.md).
 
 ## Commands
 
@@ -38,7 +38,7 @@ uv run python -m mmlab.data ingest --symbol BTCUSDT --date 2026-09-01 --max-memo
 uv run python -m mmlab.run --config configs/naive_btcusdt.json   # run one backtest, writes runs/<id>/
 uv run python scripts/phase0_convert.py      # convert sample data to npz
 uv run python scripts/phase0_tutorial.py     # run the Phase 0 tutorial
-uv run streamlit run dashboard/app.py        # dashboard (Phase 3, not built yet)
+uv run python -m streamlit run dashboard/app.py   # dashboard (python -m puts the repo root on the import path)
 ```
 
 ## Architecture in one paragraph

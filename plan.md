@@ -1318,7 +1318,7 @@ AI-written backtest code is where subtle bugs live. This workflow keeps it hones
 
 \- \[x] \*\*P2:\*\* Naive market maker via CLI; artifact format frozen; first sanity tests green
 
-\- \[ ] \*\*P3:\*\* Dashboard: launch runs and explore them in the browser
+\- \[ ] \*\*P3:\*\* Dashboard: launch runs and explore them in the browser (Home, Run Backtest, Run Explorer and a Strategies page are built and checked in a browser; the Data Explorer page is not built yet)
 
 \- \[ ] \*\*P4:\*\* Exact fills, markout curve, sensitivity study, Compare page
 
