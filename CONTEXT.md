@@ -4,7 +4,7 @@ Running notes for AI sessions. Update at the end of every session.
 
 ## Current phase
 
-Phase 0 — environment, repo, skeleton and tutorial done; reading (Section 4, resources 1-3) and the concept write-up below remain. Phase 1 — code and tests written and run on one real Tardis day (2026-10-01, passed, chunk boundaries checked and clean); more days still to download. Phase 2 — done (see below). Next: Phase 3 dashboard, or Phase 4 markouts and exact fills.
+Phase 0 — environment, repo, skeleton and tutorial done; reading (Section 4, resources 1-3) and the concept write-up below remain. Phase 1 — code and tests written and run on four real Tardis days (2026-07-01, 08-01, 09-01, 10-01; all passed; chunk boundaries checked on 10-01). Phase 2 — done (see below). Next: Phase 3 dashboard, or Phase 4 markouts and exact fills.
 
 ## Decisions
 
@@ -52,6 +52,21 @@ Frozen at version 1 in Phase 2 (`CONFIG_VERSION`). See docs/INFRASTRUCTURE.md, I
 - Deviations from plan.md: (1) order ids are `2 x tick` (buy) and `2 x tick + 1` (sell) so a cancelling buy cannot collide with a new sell at the same tick; (2) the quote on a side is null (not quoted) when the position limit blocks it; (3) `constant_order_latency` replaces the deprecated `constant_latency`; (4) the first few steps before the book exists are dropped, and counted in the log; (5) run folder names use seconds (`HHMMSS`) so two runs in a minute cannot collide; (6) determinism holds for `metrics.json` except `runtime_s`.
 - Runtime: a full day (864k steps of 100 ms, 152M events) replays in about 28 s.
 - Not built yet: markouts and inventory half-life (Phase 4), exact fills (Phase 4).
+
+## More days (2026-10-17)
+
+- Downloaded and ingested the free first-of-month days 2026-07-01, 08-01 and 09-01 (BTCUSDT), alongside 10-01. All validate with 0 broken samples. Events: 181.1M (07-01), 75.7M (08-01, a Saturday), 141.6M (09-01), 152.6M (10-01). Max gap 0.4-0.9 s. Max spread 360-1019 ticks (brief dislocations). Ingest of a day takes a few minutes; peak slice estimate 2.4-3.2 GB.
+- Naive quoter on each day (same config as the 10-01 run, 100 ms steps, 2 bps maker fee):
+
+| day | hourly vol (bps) | 5 ticks: fills / net / gross | 5 ticks return over trade (bps) | 100 ticks: fills / net / gross |
+|---|---|---|---|---|
+| 2026-07-01 | 55 | 47,555 / -839 / -275 | -2.98 | 2,967 / -70 / -35 |
+| 2026-08-01 | 14 | 5,738 / -109 / -37 | -3.02 | 222 / -7 / -4 |
+| 2026-09-01 | 33 | 27,315 / -656 / -230 | -3.08 | 2,529 / -77 / -37 |
+| 2026-10-01 | 31 | 30,370 / -764 / -254 | -3.00 | 2,774 / -66 / -19 |
+
+- The 5-tick return over trade is -3.0 bps on all four days, so about -1 bp before fees on top of the 2 bps fee. Fill count and PnL scale with volatility and volume, the per-trade result does not. The sign of the Phase 2 result holds on every day tried.
+- Not yet done: a single run across several days (state between non-consecutive days, per-day metrics), and consecutive days for walk-forward (needs a paid Tardis key).
 
 ## Known issues
 

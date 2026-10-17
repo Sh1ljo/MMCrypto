@@ -132,7 +132,7 @@ Gitignored, so present only on the machine that created them.
 | `data/npz/btcusdt_20240808.npz`, `btcusdt_20240809.npz` | Converted feed. Each covers only about 5 minutes |
 | `data/npz/btcusdt_20240808_eod.npz` | End-of-day snapshot of 08-08, used as the initial snapshot for 08-09 |
 
-Real day: BTCUSDT 2026-10-01 as 24 hourly files `data/npz/btcusdt_20261001_p000.npz` to `p023.npz` (1.1 GB). `data/manifest.json` is gitignored because its entries describe machine-local files.
+Real days (BTCUSDT, all validated, no problems): 2026-07-01, 2026-08-01, 2026-09-01 and 2026-10-01, each as 24 hourly files `data/npz/btcusdt_<yyyymmdd>_p000.npz` to `p023.npz` (about 1 GB each, 3.9 GB total; raw downloads in `data/raw/` are 2.8 GB). `data/manifest.json` is gitignored because its entries describe machine-local files.
 
 Instrument parameters for BTCUSDT: tick size 0.1, lot size 0.001. Always re-check against exchange info for other symbols.
 
