@@ -140,10 +140,7 @@ def _queue_inputs() -> dict:
         disabled=queue_model != "power_prob",
         help=HELP["queue_power"],
     )
-    partial_fill = st.checkbox(
-        "Partial fills", value=DEFAULT_EXEC.partial_fill, help=HELP["partial_fill"]
-    )
-    return {"queue_model": queue_model, "queue_power": queue_power, "partial_fill": partial_fill}
+    return {"queue_model": queue_model, "queue_power": queue_power}
 
 
 def _watch(process: RunProcess) -> None:

@@ -3,8 +3,8 @@ from hftbacktest import BUY, GTX, LIMIT, SELL
 from numba import njit
 from pydantic import BaseModel, ConfigDict
 
-NO_BID_TICK = np.iinfo(np.int64).min
-NO_ASK_TICK = np.iinfo(np.int64).max
+from mmlab.strategies.recording import NO_ASK_TICK, NO_BID_TICK, elapse_step, record_fills
+
 POSITION_EPS = 1e-9
 QUOTE_COLUMNS = 3
 
@@ -55,9 +55,27 @@ def _cancel_stale(hbt, bid_tick, ask_tick):
 
 # symmetric post-only quotes around mid; quotes_out rows are (mid, bid, ask), NaN if not quoted
 @njit
-def naive_mm(hbt, recorder, quotes_out, half_spread_ticks, order_qty, max_position, step_ns):
+def naive_mm(
+    hbt,
+    recorder,
+    quotes_out,
+    fills_out,
+    mids_out,
+    half_spread_ticks,
+    order_qty,
+    max_position,
+    step_ns,
+    sample_ns,
+):
+    samples_per_step = step_ns // sample_ns
     step = 0
-    while hbt.elapse(step_ns) == 0:
+    fill_count = 0
+    mid_count = 0
+    while True:
+        is_over, mid_count = elapse_step(hbt, mids_out, mid_count, samples_per_step, sample_ns)
+        if is_over:
+            break
+        fill_count = record_fills(hbt, fills_out, fill_count)
         hbt.clear_inactive_orders(0)
         depth = hbt.depth(0)
         tick_size = depth.tick_size
@@ -104,4 +122,4 @@ def naive_mm(hbt, recorder, quotes_out, half_spread_ticks, order_qty, max_positi
 
         recorder.record(hbt)
         step += 1
-    return step
+    return step, fill_count, mid_count

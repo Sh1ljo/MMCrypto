@@ -1,3 +1,5 @@
+from datetime import date
+
 import numpy as np
 import polars as pl
 import pytest
@@ -6,10 +8,16 @@ from dashboard.charts import (
     DARK,
     LIGHT,
     colors_for,
+    compare_equity_figure,
+    compare_markout_figure,
     distribution_figure,
     ladder_figure,
+    latency_by_file_figure,
+    latency_histogram_figure,
+    markout_figure,
     run_figure,
 )
+from mmlab.data.latency import BIN_EDGES_MS, FileLatency, LatencyReport
 from mmlab.run import run_backtest
 from tests.synthetic_events import synthetic_config, write_synthetic_day
 
@@ -204,3 +212,118 @@ def test_ladder_survives_quotes_at_the_touch():
 
     low, high = figure.layout.xaxis.range
     assert low < 100.0 < high
+
+
+CURVE = pl.DataFrame(
+    {
+        "horizon_ms": [100, 1_000, 10_000],
+        "fills": [50, 50, 50],
+        "avg_markout": [-0.1, -0.2, -0.3],
+        "avg_markout_bps": [-1.0, -2.0, -3.0],
+        "stderr_bps": [0.1, 0.2, 0.3],
+    }
+)
+
+
+def latency_report() -> LatencyReport:
+    edges = BIN_EDGES_MS.tolist()
+    counts = [0] * (len(edges) - 1)
+    counts[20], counts[30] = 900, 100
+    files = [
+        FileLatency(file=f"f{n}.npz", events=500, p50_ms=2, p99_ms=9, max_ms=40) for n in (0, 1)
+    ]
+    return LatencyReport(
+        symbol="BTCUSDT",
+        day=date(2026, 10, 1),
+        events=1_000,
+        mean_ms=3.0,
+        p50_ms=2.0,
+        p90_ms=5.0,
+        p99_ms=9.0,
+        p999_ms=30.0,
+        max_ms=40.0,
+        bin_edges_ms=edges,
+        counts=counts,
+        files=files,
+    )
+
+
+def test_markout_figure_draws_the_curve_and_the_same_curve_after_the_fee():
+    figure = markout_figure(CURVE, 2.0, LIGHT)
+
+    traces = traces_by_name(figure)
+    assert list(traces["Average markout"].x) == [0.1, 1.0, 10.0]
+    assert list(traces["Average markout"].y) == [-1.0, -2.0, -3.0]
+    assert list(traces["After 2 bps fee"].y) == [-3.0, -4.0, -5.0]
+    assert figure.layout.xaxis.type == "log"
+    assert list(figure.layout.xaxis.ticktext) == ["0.1 s", "1 s", "10 s"]
+
+
+def test_markout_band_is_the_95_percent_range_and_stays_out_of_the_legend():
+    figure = markout_figure(CURVE, 2.0, LIGHT)
+
+    lower, upper = figure.data[0], figure.data[1]
+    assert np.allclose(lower.y, np.array([-1.0, -2.0, -3.0]) - 1.96 * np.array([0.1, 0.2, 0.3]))
+    assert np.allclose(upper.y, np.array([-1.0, -2.0, -3.0]) + 1.96 * np.array([0.1, 0.2, 0.3]))
+    assert lower.showlegend is False and upper.showlegend is False
+    assert upper.fill == "tonexty"
+
+
+def test_a_horizon_with_no_fills_is_left_off_the_markout_curve():
+    gapped = CURVE.with_columns(
+        pl.when(pl.col("horizon_ms") == 1_000)
+        .then(None)
+        .otherwise(pl.col("avg_markout_bps"))
+        .alias("avg_markout_bps")
+    )
+
+    traces = traces_by_name(markout_figure(gapped, 2.0, LIGHT))
+
+    assert list(traces["Average markout"].x) == [0.1, 10.0]
+
+
+def test_comparison_curves_take_the_colour_of_their_slot():
+    curves = {"first": CURVE, "second": CURVE}
+
+    traces = traces_by_name(compare_markout_figure(curves, {"first": 3, "second": 0}, DARK))
+
+    assert traces["first"].line.color == DARK.series[3]
+    assert traces["second"].line.color == DARK.series[0]
+
+
+def test_comparison_equity_lines_follow_each_runs_hours_and_pnl():
+    frame = pl.DataFrame({"hours": [0.0, 0.5, 1.0], "equity": [0.0, -1.0, -3.0]})
+
+    traces = traces_by_name(compare_equity_figure({"a": frame}, {"a": 1}, LIGHT))
+
+    assert list(traces["a"].x) == [0.0, 0.5, 1.0]
+    assert list(traces["a"].y) == [0.0, -1.0, -3.0]
+    assert traces["a"].line.color == LIGHT.series[1]
+
+
+def test_the_series_palette_has_eight_distinct_colours_in_both_modes():
+    for colors in (LIGHT, DARK):
+        assert len(colors.series) == 8
+        assert len(set(colors.series)) == 8
+        assert colors.series[:3] == (colors.bid, colors.ask, colors.position)
+
+
+def test_latency_histogram_shows_shares_and_marks_the_median_and_the_tail():
+    figure = latency_histogram_figure(latency_report(), LIGHT)
+
+    assert np.asarray(figure.data[0].y).sum() == pytest.approx(100.0)
+    assert figure.layout.xaxis.type == "log" and figure.layout.yaxis.type == "log"
+    assert [shape.x0 for shape in figure.layout.shapes] == [2.0, 9.0, 30.0]
+    assert [a.x for a in figure.layout.annotations] == pytest.approx(np.log10([2.0, 9.0, 30.0]))
+    assert [a.text for a in figure.layout.annotations] == [
+        "median 2 ms",
+        "p99 9 ms",
+        "p99.9 30 ms",
+    ]
+
+
+def test_latency_by_file_has_a_point_per_file_for_each_percentile():
+    figure = latency_by_file_figure(latency_report(), LIGHT)
+
+    assert [trace.name for trace in figure.data] == ["Median", "99th percentile", "Worst"]
+    assert all(len(trace.x) == 2 for trace in figure.data)

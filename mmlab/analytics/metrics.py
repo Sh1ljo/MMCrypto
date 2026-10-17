@@ -2,12 +2,17 @@ import math
 
 import numpy as np
 import polars as pl
+from numba import njit
 from pydantic import BaseModel
 
 NS_PER_HOUR = 3_600_000_000_000
+NS_PER_S = 1_000_000_000
 HOURS_PER_YEAR = 24 * 365
 BPS = 1e4
 POSITION_EPS = 1e-9
+SHORT_MARKOUT_MS = 1_000
+LONG_MARKOUT_MS = 10_000
+HALF_LIFE_SCAN_NS = NS_PER_HOUR
 
 
 class Metrics(BaseModel):
@@ -26,23 +31,9 @@ class Metrics(BaseModel):
     pct_time_at_limit: float
     pct_time_quoted: float
     duration_h: float
-
-
-# fills inferred from changes in the recorder state between consecutive steps (fills version 1)
-def infer_fills(raw: pl.DataFrame) -> pl.DataFrame:
-    stepped = raw.with_columns(
-        pl.col("trading_volume").diff().alias("qty"),
-        pl.col("trading_value").diff().alias("value"),
-        pl.col("position").diff().alias("position_change"),
-        pl.col("mid").shift(1).alias("mid_at_fill"),
-    )
-    return stepped.filter(pl.col("qty") > 0).select(
-        pl.col("ts"),
-        pl.col("position_change").sign().cast(pl.Int8).alias("side"),
-        (pl.col("value") / pl.col("qty")).alias("price"),
-        pl.col("qty"),
-        pl.col("mid_at_fill"),
-    )
+    avg_markout_1s_bps: float | None = None
+    avg_markout_10s_bps: float | None = None
+    inventory_half_life_s: float | None = None
 
 
 # last equity value of each UTC hour, the unit Sharpe is computed on
@@ -80,8 +71,44 @@ def _spread_captured_bps(fills: pl.DataFrame) -> float | None:
     return float((captured * weights).sum() / weights.sum())
 
 
-# summary metrics from a timeseries (plan.md Section 2.5 columns) and its fills
-def compute_metrics(timeseries: pl.DataFrame, fills: pl.DataFrame, max_position: float) -> Metrics:
+# seconds until |position| halves after each step that grew it; inf if not within scan_ns
+@njit
+def _halving_times_s(ts, abs_position, scan_ns):
+    times = np.full(len(ts), np.inf)
+    count = 0
+    for i in range(1, len(ts)):
+        if abs_position[i] <= abs_position[i - 1] + POSITION_EPS:
+            continue
+        count += 1
+        target = abs_position[i] / 2.0
+        j = i + 1
+        while j < len(ts) and ts[j] - ts[i] <= scan_ns:
+            if abs_position[j] <= target:
+                times[count - 1] = (ts[j] - ts[i]) / NS_PER_S
+                break
+            j += 1
+    return times[:count]
+
+
+# median halving time; an event that never halves counts as longer than any other
+def _inventory_half_life_s(timeseries: pl.DataFrame) -> float | None:
+    times = _halving_times_s(
+        timeseries["ts"].to_numpy(), timeseries["position"].abs().to_numpy(), HALF_LIFE_SCAN_NS
+    )
+    if len(times) == 0:
+        return None
+    median = float(np.median(times))
+    return None if math.isinf(median) else median
+
+
+def _markout_bps(curve: pl.DataFrame, horizon_ms: int) -> float | None:
+    return curve.filter(pl.col("horizon_ms") == horizon_ms)["avg_markout_bps"].item()
+
+
+# summary metrics from a timeseries (plan.md Section 2.5 columns), its fills and its markout curve
+def compute_metrics(
+    timeseries: pl.DataFrame, fills: pl.DataFrame, max_position: float, markout_curve: pl.DataFrame
+) -> Metrics:
     equity = timeseries["equity"]
     fees_paid = float(timeseries["fee"][-1])
     net_pnl = float(equity[-1] - equity[0])
@@ -108,4 +135,7 @@ def compute_metrics(timeseries: pl.DataFrame, fills: pl.DataFrame, max_position:
         pct_time_at_limit=float((position >= max_position - POSITION_EPS).mean() * 100),
         pct_time_quoted=float(is_quoted.mean() * 100),
         duration_h=duration_h,
+        avg_markout_1s_bps=_markout_bps(markout_curve, SHORT_MARKOUT_MS),
+        avg_markout_10s_bps=_markout_bps(markout_curve, LONG_MARKOUT_MS),
+        inventory_half_life_s=_inventory_half_life_s(timeseries),
     )

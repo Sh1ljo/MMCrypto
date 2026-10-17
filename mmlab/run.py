@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import json
+import math
 import subprocess
 import time
 import traceback
@@ -13,14 +14,19 @@ import polars as pl
 from hftbacktest import BacktestAsset, HashMapMarketDepthBacktest
 from hftbacktest.recorder import Recorder
 
-from mmlab.analytics.metrics import compute_metrics, infer_fills
+from mmlab.analytics.markouts import markouts
+from mmlab.analytics.metrics import compute_metrics
 from mmlab.config import RunConfig, RunRecord
 from mmlab.settings import REPO_ROOT, data_dir
 from mmlab.strategies.naive import QUOTE_COLUMNS, NaiveParams, naive_mm
+from mmlab.strategies.recording import FILL_DTYPE, MID_DTYPE
 
 STEP_MARGIN = 10
 HASH_LENGTH = 6
 STRATEGIES = ("naive",)
+# a step submits at most two orders and an order fills at most once
+FILLS_PER_STEP = 2
+RECONCILE_TOLERANCE = 1e-9
 
 
 def runs_dir() -> Path:
@@ -50,6 +56,11 @@ def build_run_record(config: RunConfig) -> RunRecord:
 # a fresh backtest, since a backtest object cannot be reused
 def build_backtest(config: RunConfig) -> HashMapMarketDepthBacktest:
     exec_config = config.exec
+    if exec_config.partial_fill:
+        raise ValueError(
+            "partial_fill is not supported: exact fills record one execution per filled order, "
+            "and recording an order filled in pieces exactly has not been built"
+        )
     asset = (
         BacktestAsset()
         .data([_resolve(path) for path in config.data_files])
@@ -65,12 +76,7 @@ def build_backtest(config: RunConfig) -> HashMapMarketDepthBacktest:
         asset = asset.power_prob_queue_model(exec_config.queue_power)
     else:
         asset = asset.risk_adverse_queue_model()
-    asset = (
-        asset.partial_fill_exchange()
-        if exec_config.partial_fill
-        else asset.no_partial_fill_exchange()
-    )
-    return HashMapMarketDepthBacktest([asset])
+    return HashMapMarketDepthBacktest([asset.no_partial_fill_exchange()])
 
 
 # local timestamp span of the data in ns, read from the first and last file only
@@ -85,18 +91,30 @@ def data_span_ns(config: RunConfig) -> int:
     return int(last.max()) - start
 
 
-def _run_strategy(config: RunConfig, hbt, recorder: Recorder, quotes: np.ndarray) -> int:
+class _Buffers:
+    def __init__(self, config: RunConfig, steps: int) -> None:
+        samples_per_step = config.step_ns // config.mid_sample_ns
+        self.recorder = Recorder(1, steps)
+        self.quotes = np.full((steps, QUOTE_COLUMNS), np.nan)
+        self.fills = np.zeros(FILLS_PER_STEP * steps, dtype=FILL_DTYPE)
+        self.mids = np.zeros(steps * samples_per_step, dtype=MID_DTYPE)
+
+
+def _run_strategy(config: RunConfig, hbt, buffers: _Buffers) -> tuple[int, int, int]:
     if config.strategy != "naive":
         raise ValueError(f"unknown strategy {config.strategy!r}, expected one of {STRATEGIES}")
     params = NaiveParams.model_validate(config.params)
     return naive_mm(
         hbt,
-        recorder.recorder,
-        quotes,
+        buffers.recorder.recorder,
+        buffers.quotes,
+        buffers.fills,
+        buffers.mids,
         params.half_spread_ticks,
         config.order_qty,
         config.max_position,
         config.step_ns,
+        config.mid_sample_ns,
     )
 
 
@@ -111,10 +129,47 @@ def _drop_warmup(raw: pl.DataFrame) -> pl.DataFrame:
     return trimmed
 
 
-def _build_tables(recorder: Recorder, quotes: np.ndarray) -> tuple[pl.DataFrame, pl.DataFrame]:
-    records = recorder.get(0)
+def _records_frame(records: np.ndarray) -> pl.DataFrame:
+    return pl.DataFrame({name: records[name] for name in records.dtype.names})
+
+
+# the exact fills must add up to what the recorder counted, or the replay and the fills disagree
+def _check_fills(fills: pl.DataFrame, raw: pl.DataFrame) -> None:
+    last = raw.tail(1)
+    expected = {
+        "count": float(last["num_trades"][0]),
+        "qty": float(last["trading_volume"][0]),
+        "value": float(last["trading_value"][0]),
+    }
+    actual = {
+        "count": float(fills.height),
+        "qty": float(fills["qty"].sum()),
+        "value": float((fills["price"] * fills["qty"]).sum()),
+    }
+    for name, value in expected.items():
+        if not math.isclose(actual[name], value, rel_tol=RECONCILE_TOLERANCE, abs_tol=1e-9):
+            raise ValueError(
+                f"exact fills do not match the recorder: {name} {actual[name]} != {value}"
+            )
+
+
+def _build_fills(buffers: _Buffers, fill_count: int, mids: pl.DataFrame) -> pl.DataFrame:
+    fills = _records_frame(buffers.fills[:fill_count]).sort("ts", "side", "price", "qty")
+    with_mid = fills.join_asof(mids.rename({"mid": "mid_at_fill"}), on="ts", strategy="backward")
+    if with_mid["mid_at_fill"].null_count() > 0:
+        raise ValueError("a fill happened before the first mid sample")
+    return with_mid
+
+
+def _build_tables(
+    buffers: _Buffers, fill_count: int, mid_count: int
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    records = buffers.recorder.get(0)
     quote_frame = pl.DataFrame(
-        {"bid_quote": quotes[: len(records), 1], "ask_quote": quotes[: len(records), 2]}
+        {
+            "bid_quote": buffers.quotes[: len(records), 1],
+            "ask_quote": buffers.quotes[: len(records), 2],
+        }
     ).fill_nan(None)
     raw = pl.DataFrame(
         {
@@ -129,10 +184,12 @@ def _build_tables(recorder: Recorder, quotes: np.ndarray) -> tuple[pl.DataFrame,
         }
     ).hstack(quote_frame)
     raw = _drop_warmup(raw)
+    mids = _records_frame(buffers.mids[:mid_count])
+    fills = _build_fills(buffers, fill_count, mids)
+    _check_fills(fills, raw)
     timeseries = raw.with_columns(
         (pl.col("balance") + pl.col("position") * pl.col("mid") - pl.col("fee")).alias("equity")
     )
-    fills = infer_fills(raw)
     columns = [
         "ts",
         "mid",
@@ -144,7 +201,7 @@ def _build_tables(recorder: Recorder, quotes: np.ndarray) -> tuple[pl.DataFrame,
         "equity",
         "num_trades",
     ]
-    return timeseries.select(columns), fills
+    return timeseries.select(columns), fills, mids
 
 
 def _run_id(config: RunConfig) -> str:
@@ -180,19 +237,21 @@ def run_backtest(config: RunConfig, output_dir: Path | None = None) -> Path:
         steps = span_ns // config.step_ns + STEP_MARGIN
         log(f"data span {span_ns / 3.6e12:.2f} h, up to {steps} steps")
         hbt = build_backtest(config)
-        recorder = Recorder(hbt.num_assets, steps)
-        quotes = np.full((steps, QUOTE_COLUMNS), np.nan)
-        _run_strategy(config, hbt, recorder, quotes)
+        buffers = _Buffers(config, steps)
+        _, fill_count, mid_count = _run_strategy(config, hbt, buffers)
         hbt.close()
-        timeseries, fills = _build_tables(recorder, quotes)
-        warmup_steps = recorder.get(0).shape[0] - timeseries.height
+        timeseries, fills, mids = _build_tables(buffers, fill_count, mid_count)
+        warmup_steps = buffers.recorder.get(0).shape[0] - timeseries.height
         log(
             f"replay done: {timeseries.height} steps ({warmup_steps} warm-up dropped), "
-            f"{fills.height} fill rows"
+            f"{fills.height} fills, {mids.height} mid samples"
         )
+        curve = markouts(fills, mids, int(timeseries["ts"][-1]))
         timeseries.write_parquet(run_dir / "timeseries.parquet")
         fills.write_parquet(run_dir / "fills.parquet")
-        metrics = compute_metrics(timeseries, fills, config.max_position)
+        mids.write_parquet(run_dir / "mids.parquet")
+        curve.write_parquet(run_dir / "markouts.parquet")
+        metrics = compute_metrics(timeseries, fills, config.max_position, curve)
         payload = {"status": "ok", "runtime_s": time.perf_counter() - started}
         _write_json(run_dir / "metrics.json", payload | metrics.model_dump())
         log(

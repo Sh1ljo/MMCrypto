@@ -299,9 +299,9 @@ def _metrics_tab() -> None:
             "Spread captured",
             [
                 r"10^4 \times \dfrac{\sum \text{qty}\cdot\text{side}\cdot"
-                r"(s_{\text{before}} - \text{price})/s_{\text{before}}}{\sum \text{qty}}"
+                r"(s_{\text{fill}} - \text{price})/s_{\text{fill}}}{\sum \text{qty}}"
             ],
-            "Side is +1 for a buy and −1 for a sell. Positive beats the mid.",
+            "Side is +1 for a buy and −1 for a sell. Positive beats the mid at the fill.",
         )
         _card(
             "Max drawdown",
@@ -317,9 +317,17 @@ def _metrics_tab() -> None:
             "Hourly profit, scaled to a year (8,760 hours). Needs at least 2 hours of data.",
         )
         _card(
-            "Markout (Phase 4, planned)",
-            [r"\text{buy: } s_{t+\tau} - \text{price}", r"\text{sell: } \text{price} - s_{t+\tau}"],
-            "What a fill is worth τ seconds later. Negative means you were picked off.",
+            "Markout",
+            [
+                r"\text{buy: } 10^4\,\dfrac{s_{t+\tau} - \text{price}}{\text{price}}",
+                r"\text{sell: } 10^4\,\dfrac{\text{price} - s_{t+\tau}}{\text{price}}",
+            ],
+            "What a fill is worth τ later, averaged. Negative means you were picked off.",
+        )
+        _card(
+            "Inventory half-life",
+            [r"\text{median of } \min\{u > 0 : |q_{t+u}| \le |q_t|/2\}"],
+            "Over every step t where |q| grew. One that never halves in an hour counts as longest.",
         )
 
 

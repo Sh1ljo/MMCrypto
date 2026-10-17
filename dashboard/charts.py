@@ -1,9 +1,12 @@
+import math
 from typing import NamedTuple
 
 import numpy as np
 import plotly.graph_objects as go
 import polars as pl
 from plotly.subplots import make_subplots
+
+from mmlab.data.latency import LatencyReport
 
 TRANSPARENT = "rgba(0,0,0,0)"
 FONT_FAMILY = "system-ui, -apple-system, Segoe UI, sans-serif"
@@ -17,6 +20,15 @@ BUY, SELL, MERGED = 1, -1, 0
 MARKET_ROW, QUOTE_ROW = 1, 0
 LADDER_HEIGHT = 190
 LADDER_PAD_SHARE = 0.12
+MS_PER_S = 1_000
+BAND_Z = 1.96
+BAND_OPACITY = 0.18
+MARKOUT_HEIGHT = 380
+LEGEND_ROW_HEIGHT = 20
+EQUITY_HEIGHT = 380
+LATENCY_HEIGHT = 340
+MARK_LABEL_RISE = 18
+LATENCY_TICKS_MS = (0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000)
 
 
 class ChartColors(NamedTuple):
@@ -29,6 +41,29 @@ class ChartColors(NamedTuple):
     bid: str
     ask: str
     position: str
+    series: tuple[str, ...]
+
+
+LIGHT_SERIES = (
+    "#2a78d6",
+    "#eb6834",
+    "#1baf7a",
+    "#eda100",
+    "#e87ba4",
+    "#008300",
+    "#6250d6",
+    "#e34948",
+)
+DARK_SERIES = (
+    "#3987e5",
+    "#d95926",
+    "#199e70",
+    "#c98500",
+    "#d55181",
+    "#008300",
+    "#9085e9",
+    "#e66767",
+)
 
 
 LIGHT = ChartColors(
@@ -38,9 +73,10 @@ LIGHT = ChartColors(
     muted="#898781",
     grid="#e1e0d9",
     axis="#c3c2b7",
-    bid="#2a78d6",
-    ask="#eb6834",
-    position="#1baf7a",
+    bid=LIGHT_SERIES[0],
+    ask=LIGHT_SERIES[1],
+    position=LIGHT_SERIES[2],
+    series=LIGHT_SERIES,
 )
 DARK = ChartColors(
     surface="#1a1a19",
@@ -49,9 +85,10 @@ DARK = ChartColors(
     muted="#898781",
     grid="#2c2c2a",
     axis="#383835",
-    bid="#3987e5",
-    ask="#d95926",
-    position="#199e70",
+    bid=DARK_SERIES[0],
+    ask=DARK_SERIES[1],
+    position=DARK_SERIES[2],
+    series=DARK_SERIES,
 )
 
 
@@ -343,4 +380,193 @@ def ladder_figure(
         zeroline=False,
         linecolor=colors.axis,
     )
+    return figure
+
+
+# a horizon in ms as the axis label: 100 -> "0.1 s", 60000 -> "60 s"
+def _horizon_label(horizon_ms: float) -> str:
+    return f"{horizon_ms / MS_PER_S:g} s"
+
+
+def _style_horizon_axis(figure: go.Figure, horizons_ms: list[int]) -> None:
+    figure.update_xaxes(
+        type="log",
+        tickvals=[ms / MS_PER_S for ms in horizons_ms],
+        ticktext=[_horizon_label(ms) for ms in horizons_ms],
+        title_text="Time after the fill",
+    )
+    figure.update_yaxes(title_text="Average markout (bps)", zeroline=True)
+
+
+def _markout_points(curve: pl.DataFrame) -> pl.DataFrame:
+    return curve.drop_nulls("avg_markout_bps").with_columns(
+        (pl.col("horizon_ms") / MS_PER_S).alias("seconds"),
+        pl.col("stderr_bps").fill_null(float("nan")),
+    )
+
+
+def _confidence_band(points: pl.DataFrame, color: str) -> list[go.Scatter]:
+    seconds = points["seconds"].to_numpy()
+    margin = BAND_Z * points["stderr_bps"].to_numpy()
+    mean = points["avg_markout_bps"].to_numpy()
+    edge = {"color": TRANSPARENT, "width": 0}
+    lower = go.Scatter(x=seconds, y=mean - margin, mode="lines", line=edge, hoverinfo="skip")
+    upper = go.Scatter(
+        x=seconds,
+        y=mean + margin,
+        mode="lines",
+        line=edge,
+        fill="tonexty",
+        fillcolor=_with_opacity(color, BAND_OPACITY),
+        hoverinfo="skip",
+    )
+    return [lower, upper]
+
+
+def _with_opacity(hex_color: str, opacity: float) -> str:
+    red, green, blue = (int(hex_color[i : i + 2], 16) for i in (1, 3, 5))
+    return f"rgba({red},{green},{blue},{opacity})"
+
+
+def _markout_line(points: pl.DataFrame, name: str, color: str, dash: str = "solid") -> go.Scatter:
+    return go.Scatter(
+        x=points["seconds"].to_numpy(),
+        y=points["avg_markout_bps"].to_numpy(),
+        mode="lines+markers",
+        name=name,
+        line={"color": color, "width": LINE_WIDTH, "dash": dash},
+        marker={"size": MARKER_SIZE, "color": color},
+        customdata=np.column_stack([points["stderr_bps"].to_numpy(), points["fills"].to_numpy()]),
+        hovertemplate="%{y:.2f} bps ± %{customdata[0]:.2f} (n = %{customdata[1]:,.0f})"
+        "<extra></extra>",
+    )
+
+
+# the average markout of one run with its 95% band, and the same curve after the maker fee
+def markout_figure(curve: pl.DataFrame, fee_bps: float, colors: ChartColors) -> go.Figure:
+    points = _markout_points(curve)
+    figure = go.Figure()
+    figure.add_traces(_confidence_band(points, colors.bid))
+    average = _markout_line(points, "Average markout", colors.bid)
+    after_fee = points.with_columns((pl.col("avg_markout_bps") - fee_bps).alias("avg_markout_bps"))
+    fee_line = _markout_line(after_fee, f"After {fee_bps:g} bps fee", colors.ink, "dash")
+    average.legendrank, fee_line.legendrank = 1, 2
+    figure.add_traces([average, fee_line])
+    _style(figure, colors, height=MARKOUT_HEIGHT)
+    figure.update_traces(showlegend=False, selector={"hoverinfo": "skip"})
+    _style_horizon_axis(figure, points["horizon_ms"].to_list())
+    return figure
+
+
+# markout curves of several runs on one axis, each run in its own colour slot
+def compare_markout_figure(
+    curves: dict[str, pl.DataFrame], slots: dict[str, int], colors: ChartColors
+) -> go.Figure:
+    figure = go.Figure()
+    horizons: set[int] = set()
+    for label, curve in curves.items():
+        points = _markout_points(curve)
+        horizons |= set(points["horizon_ms"].to_list())
+        figure.add_trace(_markout_line(points, label, colors.series[slots[label]]))
+    _style(figure, colors, height=MARKOUT_HEIGHT + LEGEND_ROW_HEIGHT * len(curves))
+    _style_horizon_axis(figure, sorted(horizons))
+    return figure
+
+
+# net equity of several runs against hours since each began
+def compare_equity_figure(
+    equities: dict[str, pl.DataFrame], slots: dict[str, int], colors: ChartColors
+) -> go.Figure:
+    figure = go.Figure()
+    for label, frame in equities.items():
+        figure.add_trace(
+            go.Scattergl(
+                x=frame["hours"].to_numpy(),
+                y=frame["equity"].to_numpy(),
+                mode="lines",
+                name=label,
+                line={"color": colors.series[slots[label]], "width": LINE_WIDTH},
+                hovertemplate="%{y:,.2f}<extra></extra>",
+            )
+        )
+    _style(figure, colors, height=EQUITY_HEIGHT + LEGEND_ROW_HEIGHT * len(equities))
+    figure.update_xaxes(title_text="Hours since the run began")
+    figure.update_yaxes(title_text="Net PnL (USDT)", zeroline=True)
+    return figure
+
+
+# plain numbers at 1, 2, 5, 10, ... ms instead of the log axis's crowded default ticks
+def _label_latency_ticks(axis) -> None:
+    axis.tickvals = LATENCY_TICKS_MS
+    axis.ticktext = [f"{tick:g}" for tick in LATENCY_TICKS_MS]
+
+
+# share of events per latency bin, with the median and the tail marked
+def latency_histogram_figure(report: LatencyReport, colors: ChartColors) -> go.Figure:
+    edges = np.array(report.bin_edges_ms)
+    counts = np.array(report.counts)
+    centers = np.sqrt(edges[:-1] * edges[1:])
+    seen = counts > 0
+    figure = go.Figure(
+        go.Scatter(
+            x=centers[seen],
+            y=counts[seen] / counts.sum() * 100,
+            mode="lines",
+            line={"color": colors.bid, "width": LINE_WIDTH, "shape": "hvh"},
+            hovertemplate="%{x:.3g} ms: %{y:.4g}% of events<extra></extra>",
+        )
+    )
+    marks = (
+        ("median", report.p50_ms, 0),
+        ("p99", report.p99_ms, 0),
+        ("p99.9", report.p999_ms, MARK_LABEL_RISE),
+    )
+    for name, value, rise in marks:
+        figure.add_vline(x=value, line={"color": colors.axis, "width": 1, "dash": "dot"})
+        # an annotation on a log axis takes the base-10 logarithm of its position
+        figure.add_annotation(
+            x=math.log10(value),
+            y=1,
+            yref="paper",
+            text=f"{name} {value:.3g} ms",
+            showarrow=False,
+            xanchor="left",
+            yanchor="bottom",
+            xshift=3,
+            yshift=rise,
+            font={"color": colors.secondary},
+        )
+    _style(figure, colors, height=LATENCY_HEIGHT)
+    figure.update_layout(showlegend=False, hovermode="closest")
+    figure.update_xaxes(type="log", title_text="Feed latency (ms)", showspikes=False)
+    _label_latency_ticks(figure.layout.xaxis)
+    figure.update_yaxes(type="log", title_text="% of events per bin", dtick=1, tickformat=".4~g")
+    return figure
+
+
+# median, 99th percentile and worst latency of every file of the day, in order
+def latency_by_file_figure(report: LatencyReport, colors: ChartColors) -> go.Figure:
+    figure = go.Figure()
+    lines = (
+        ("Median", [f.p50_ms for f in report.files], colors.series[0]),
+        ("99th percentile", [f.p99_ms for f in report.files], colors.series[1]),
+        ("Worst", [f.max_ms for f in report.files], colors.series[2]),
+    )
+    for name, values, color in lines:
+        figure.add_trace(
+            go.Scatter(
+                x=list(range(len(values))),
+                y=values,
+                mode="lines+markers",
+                name=name,
+                line={"color": color, "width": LINE_WIDTH},
+                marker={"size": MARKER_SIZE, "color": color},
+                customdata=[f.file for f in report.files],
+                hovertemplate="%{y:.3g} ms (%{customdata})<extra></extra>",
+            )
+        )
+    _style(figure, colors, height=LATENCY_HEIGHT)
+    figure.update_xaxes(title_text="File of the day, in order")
+    figure.update_yaxes(type="log", title_text="Feed latency (ms)")
+    _label_latency_ticks(figure.layout.yaxis)
     return figure

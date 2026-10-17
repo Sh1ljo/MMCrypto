@@ -20,6 +20,7 @@ COLUMN_ORDER = [
     "sharpe",
     "max_drawdown",
     "fills",
+    "markout_1s_bps",
     "runtime_s",
 ]
 COLUMN_CONFIG = {
@@ -39,6 +40,9 @@ COLUMN_CONFIG = {
         "Max drawdown", format="%.2f", help=HELP["max_drawdown"]
     ),
     "fills": st.column_config.NumberColumn("Fills", format="%d", help=HELP["fills"]),
+    "markout_1s_bps": st.column_config.NumberColumn(
+        "Markout 1 s (bps)", format="%.2f", help=HELP["markout_1s"]
+    ),
     "runtime_s": st.column_config.NumberColumn("Runtime (s)", format="%.1f", help=HELP["runtime"]),
 }
 

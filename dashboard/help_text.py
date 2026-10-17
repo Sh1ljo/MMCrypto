@@ -17,6 +17,15 @@ HELP = {
         "How far fills were from the mid just before them, in bps. Positive means you bought "
         "below or sold above the mid. Fees are not included."
     ),
+    "markout_1s": (
+        "What a fill was worth 1 second later, in bps. A buy gains if the mid rose after it, "
+        "a sell if the mid fell. Negative means the market moved against you after you traded."
+    ),
+    "markout_10s": "The same as the 1 second markout, measured 10 seconds after each fill.",
+    "inventory_half_life": (
+        "The typical time for your position to fall to half its size after a fill made it "
+        "bigger. n/a when it usually takes longer than an hour."
+    ),
     "mean_abs_position": "Average inventory size, ignoring direction, in coin units.",
     "time_at_limit": "Share of time inventory sat at its limit, so one side stopped quoting.",
     "time_quoted": "Share of time both a buy and a sell quote were live.",
@@ -62,7 +71,6 @@ HELP = {
         "up when trades eat the queue ahead (pessimistic). power_prob: a probabilistic guess."
     ),
     "queue_power": "Tuning of the power_prob guess; 2 is the default. risk_adverse ignores it.",
-    "partial_fill": "Off: a quote fills completely or not at all. On: it can fill in pieces.",
     "run_name": "Names the run folder so you can find it later. Leave empty for the suggested one.",
     "run_button": (
         "Starts the backtest in the background. A full day takes about half a minute. "
@@ -81,6 +89,53 @@ HELP = {
     "distributions": (
         "Inventory: share of time at each position. Quoted spread: gap between your bid and "
         "ask, in ticks. Fill size: how big each fill row was."
+    ),
+    "markouts": (
+        "Average value of a fill some time after it happened, in bps of the fill price. "
+        "The dashed line subtracts the maker fee: below zero there means each fill loses "
+        "money. The shaded band is the 95% range of the average, so a wide band means few "
+        "fills."
+    ),
+    "no_markouts": "This run was made before markouts were recorded. Run it again to get them.",
+    "compare_page": "Put several finished runs side by side: curves, numbers and settings.",
+    "compare_runs": "Pick 2 to 8 runs. A run keeps its colour while it stays selected.",
+    "compare_equity": (
+        "Profit after fees over time, each run from its own start. Different days line up "
+        "by hours since the run began."
+    ),
+    "compare_markouts": (
+        "Average markout against the time after the fill. Lower curves mean worse fills. "
+        "Hover to see the exact value and the number of fills."
+    ),
+    "compare_metrics": "Every headline number of the selected runs. n/a means not available.",
+    "compare_settings": "Only the settings that differ between the selected runs.",
+    "data_explorer_page": "Look at the recorded market data itself, before any strategy.",
+    "explorer_day": "A recorded day from your data folder.",
+    "day_summary": "Counts from the checks run when the day was registered.",
+    "events": "Market events in the day: book changes and trades.",
+    "trades": "Trades in the day.",
+    "max_gap": "Longest stretch with no market event at all.",
+    "spread_p50": "Median gap between best ask and best bid, in ticks.",
+    "spread_p99": "Gap that was exceeded only 1% of the time, in ticks.",
+    "trades_per_min": "Average trades per minute over the day.",
+    "latency_section": (
+        "Feed latency: how long after the exchange stamped an event your recorder saw it. "
+        "It is the delay of the data, not of your orders."
+    ),
+    "latency_measure": (
+        "Reads every file of the day once to measure feed latency. It takes about half a minute."
+    ),
+    "latency_p50": "Half of all events arrived faster than this.",
+    "latency_p99": "99% of events arrived faster than this.",
+    "latency_p999": "99.9% of events arrived faster than this.",
+    "latency_max": "The slowest event of the day.",
+    "latency_histogram": (
+        "How many events arrived after each delay, as a share of all events. Both axes are "
+        "logarithmic, so the rare slow events stay visible."
+    ),
+    "latency_by_file": (
+        "Median, 99th percentile and worst feed latency of each file, in order. Busy hours "
+        "are slower."
     ),
     "calculator": "Runs the strategy's own quoting code, so these are the quotes it would place.",
     "best_bid": "The highest price a buyer offers right now.",
@@ -113,5 +168,13 @@ GLOSSARY = [
     ),
     ("Latency", "The delay between sending an order and the exchange acting on it."),
     ("Step", "One tick of the simulation clock, when the strategy looks at the book."),
-    ("Markout", "What a fill is worth some seconds later. Built in Phase 4."),
+    (
+        "Markout",
+        "What a fill was worth some time later. Negative means the market moved against you.",
+    ),
+    ("Inventory half-life", "How long inventory takes to fall to half after it grew."),
+    (
+        "Feed latency",
+        "The delay between the exchange stamping an event and your recorder seeing it.",
+    ),
 ]

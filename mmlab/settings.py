@@ -23,3 +23,7 @@ def npz_dir() -> Path:
 
 def manifest_path() -> Path:
     return data_dir() / "manifest.json"
+
+
+def latency_dir() -> Path:
+    return data_dir() / "latency"

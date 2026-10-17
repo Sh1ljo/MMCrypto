@@ -6,7 +6,8 @@ from mmlab import settings
 from mmlab.data import download
 from mmlab.data.convert import convert_day_chunked
 from mmlab.data.instruments import fetch_symbol_filters
-from mmlab.data.manifest import ManifestEntry, upsert_entry
+from mmlab.data.latency import latency_path, measure_feed_latency, save_latency
+from mmlab.data.manifest import ManifestEntry, load_manifest, upsert_entry
 from mmlab.data.validate import (
     DEFAULT_STEP_NS,
     ValidationLimits,
@@ -38,6 +39,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--chunk-hours", type=float, default=1.0, help="convert in slices of this many hours"
     )
     ingest.add_argument("--step-ms", type=float, default=DEFAULT_STEP_NS / 1e6)
+
+    latency = sub.add_parser("latency", help="measure the feed latency of one ingested day")
+    latency.add_argument("--symbol", required=True)
+    latency.add_argument("--date", dest="day", type=_day, required=True)
     return parser
 
 
@@ -88,9 +93,26 @@ def _run_ingest(args: argparse.Namespace) -> int:
     return 1 if problems else 0
 
 
+def _run_latency(args: argparse.Namespace) -> int:
+    manifest = load_manifest(settings.manifest_path())
+    entry = next((e for e in manifest.files if (e.symbol, e.day) == (args.symbol, args.day)), None)
+    if entry is None:
+        print(f"{args.symbol} {args.day} is not in the manifest; run ingest first")
+        return 1
+    report = measure_feed_latency(entry, settings.data_dir())
+    path = latency_path(settings.latency_dir(), args.symbol, args.day)
+    save_latency(path, report)
+    print(
+        f"{report.events} events, feed latency p50 {report.p50_ms:.2f} ms, "
+        f"p99 {report.p99_ms:.2f} ms, p99.9 {report.p999_ms:.2f} ms, max {report.max_ms:.1f} ms"
+    )
+    print(f"saved {path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
-    handlers = {"download": _run_download, "ingest": _run_ingest}
+    handlers = {"download": _run_download, "ingest": _run_ingest, "latency": _run_latency}
     return handlers[args.command](args)
 
 

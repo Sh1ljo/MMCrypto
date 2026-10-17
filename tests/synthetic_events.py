@@ -54,3 +54,17 @@ def synthetic_config(data_file: Path, **overrides) -> RunConfig:
         "exec": {"queue_model": "risk_adverse"},
     }
     return RunConfig.model_validate(fields | overrides)
+
+
+# a feed file whose rows are (flags, feed latency in ms), for latency measurements
+def write_feed_events(path: Path, rows: list[tuple[int, float]]) -> Path:
+    events = [
+        (flags, T0_NS + i * 1_000, T0_NS + i * 1_000 + round(latency_ms * 1_000_000))
+        for i, (flags, latency_ms) in enumerate(rows)
+    ]
+    data = np.array(
+        [(flags, exch, local, 100.0, 1.0, 0, 0, 0.0) for flags, exch, local in events],
+        dtype=event_dtype,
+    )
+    np.savez_compressed(path, data=data)
+    return path

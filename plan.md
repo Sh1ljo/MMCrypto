@@ -954,9 +954,9 @@ Let the user pick the resample interval (100 ms / 1 s / 10 s / 1 min) and a time
 
 \*\*Tasks\*\*
 
-\- \[ ] \*\*Exact fill recording\*\* (fills version 2, Section 2.5).
+\- \[x] \*\*Exact fill recording\*\* (fills version 2, Section 2.5).
 
-\- \[ ] \*\*Markout analysis\*\* (`mmlab/analytics/markouts.py`):
+\- \[x] \*\*Markout analysis\*\* (`mmlab/analytics/markouts.py`):
 
 &#x20; ```python
 
@@ -992,7 +992,7 @@ Let the user pick the resample interval (100 ms / 1 s / 10 s / 1 min) and a time
 
 &#x20; For fine-resolution mids, save a separate `mids.parquet` at every book update (or every 10 ms), not just at the 100 ms decision steps.
 
-\- \[ ] \*\*Sensitivity experiments\*\*, each a separate run compared in the dashboard:
+\- \[x] \*\*Sensitivity experiments\*\*, each a separate run compared in the dashboard:
 
 &#x20; - queue model: `power\_prob` (power 2, 3) vs `risk\_adverse`
 
@@ -1002,9 +1002,9 @@ Let the user pick the resample interval (100 ms / 1 s / 10 s / 1 min) and a time
 
 &#x20; - half spread: 1, 2, 5, 10 ticks
 
-\- \[ ] \*\*Latency from data:\*\* the feed's `local\_ts − exch\_ts` gives you \*feed\* latency. Plot its distribution in the Data Explorer. Later, replace constant latency with `intp\_order\_latency` built from a latency series.
+\- \[x] \*\*Latency from data:\*\* the feed's `local\_ts − exch\_ts` gives you \*feed\* latency. Plot its distribution in the Data Explorer. Later, replace constant latency with `intp\_order\_latency` built from a latency series. *(Done: `python -m mmlab.data latency` and the Data Explorer page. The `intp\_order\_latency` replacement is still open.)*
 
-\- \[ ] Add a \*\*Compare Runs\*\* page (overlay equity, metrics table, config diff).
+\- \[x] Add a \*\*Compare Runs\*\* page (overlay equity, metrics table, config diff).
 
 
 
@@ -1318,9 +1318,9 @@ AI-written backtest code is where subtle bugs live. This workflow keeps it hones
 
 \- \[x] \*\*P2:\*\* Naive market maker via CLI; artifact format frozen; first sanity tests green
 
-\- \[ ] \*\*P3:\*\* Dashboard: launch runs and explore them in the browser (Home, Run Backtest, Run Explorer and a Strategies page are built and checked in a browser; the Data Explorer page is not built yet)
+\- \[x] \*\*P3:\*\* Dashboard: launch runs and explore them in the browser (Home, Run Backtest, Run Explorer and a Strategies page, checked in a browser; the Data Explorer page came in Phase 4)
 
-\- \[ ] \*\*P4:\*\* Exact fills, markout curve, sensitivity study, Compare page
+\- \[x] \*\*P4:\*\* Exact fills, markout curve, sensitivity study, Compare page *(done 2026-10-17; the written explanation is in CONTEXT.md)*
 
 \- \[ ] \*\*P5:\*\* Calibrated AS and GLFT; calibration tab; inventory control demonstrated
 

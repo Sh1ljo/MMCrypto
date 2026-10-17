@@ -22,7 +22,7 @@ The full phased build guide is [plan.md](plan.md). Running notes, decisions, and
 
 ## Current status
 
-Phase 0 (setup and theory) is done except the reading and the concept write-up. Phase 1 (data pipeline, `mmlab/data/`) is done and has run on one real Tardis day (BTCUSDT 2026-10-01); more days are still to download. Phase 2 is done: `mmlab/config.py`, `mmlab/strategies/naive.py`, `mmlab/analytics/metrics.py` and the runner `mmlab/run.py` produce a run folder, and the Phase 2 sanity tests pass. The first full-day naive result is a loss. Phase 3 (dashboard, `dashboard/`) is built for Home, Run Backtest, Run Explorer and a Strategies page (rules, formulas and a quote calculator), with a `?` tooltip on every input and number, and was checked in a real browser, including a run launched from the page; the Data Explorer page is not built and the user's own test is pending. The authoritative status is in [CONTEXT.md](CONTEXT.md).
+Phase 0 (setup and theory) is done except the reading and the concept write-up. Phase 1 (data pipeline, `mmlab/data/`) is done and has run on four real Tardis days (BTCUSDT 2026-07-01, 08-01, 09-01, 10-01). Phase 2 is done: `mmlab/config.py`, `mmlab/strategies/naive.py`, `mmlab/analytics/metrics.py` and the runner `mmlab/run.py` produce a run folder, and the Phase 2 sanity tests pass. Phase 3 (dashboard, `dashboard/`) is done: Home, Run Backtest, Run Explorer and a Strategies page, with a `?` tooltip on every input and number. Phase 4 is done: exact fills, `mids.parquet` and `markouts.parquet` in every run (config and artifact version 2; version 1 runs still load), the markout curve and inventory half-life, a sensitivity study, feed latency from the data, and the Compare Runs and Data Explorer pages. The result: the naive quoter loses on every day tried because its fills are adversely selected (about -1 bp per traded dollar before a 2 bp fee); the written explanation is in [CONTEXT.md](CONTEXT.md). Next is Phase 5 (Avellaneda–Stoikov and GLFT). The authoritative status is in [CONTEXT.md](CONTEXT.md).
 
 ## Commands
 
@@ -35,7 +35,9 @@ uv run ruff check .                          # lint
 uv run ruff format .                         # format
 uv run python -m mmlab.data download --symbol BTCUSDT --from 2026-09-01 --to 2026-09-02
 uv run python -m mmlab.data ingest --symbol BTCUSDT --date 2026-09-01 --max-memory-gb 8   # convert, validate, register
+uv run python -m mmlab.data latency --symbol BTCUSDT --date 2026-09-01   # feed latency of an ingested day
 uv run python -m mmlab.run --config configs/naive_btcusdt.json   # run one backtest, writes runs/<id>/
+uv run python -m scripts.phase4_sensitivity --date 2026-10-01   # Phase 4 sensitivity grid, 21 runs
 uv run python scripts/phase0_convert.py      # convert sample data to npz
 uv run python scripts/phase0_tutorial.py     # run the Phase 0 tutorial
 uv run python -m streamlit run dashboard/app.py   # dashboard (python -m puts the repo root on the import path)
@@ -43,7 +45,7 @@ uv run python -m streamlit run dashboard/app.py   # dashboard (python -m puts th
 
 ## Architecture in one paragraph
 
-Raw Tardis/Binance data is converted to hftbacktest `.npz` files (`mmlab.data`). A CLI runner (`mmlab.run`) reads a JSON config, replays the data through a Numba-compiled strategy, and writes a run folder under `runs/` (config, metrics, timeseries, fills). The Streamlit dashboard never runs backtest logic: it writes a config, launches the runner as a subprocess, and reads the saved artifacts. Details are in [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md).
+Raw Tardis/Binance data is converted to hftbacktest `.npz` files (`mmlab.data`). A CLI runner (`mmlab.run`) reads a JSON config, replays the data through a Numba-compiled strategy, and writes a run folder under `runs/` (config, metrics, timeseries, exact fills, mid samples, markouts). The Streamlit dashboard never runs backtest logic: it writes a config, launches the runner as a subprocess, and reads the saved artifacts. Details are in [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md).
 
 ## Rules that always apply
 

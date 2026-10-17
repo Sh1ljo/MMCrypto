@@ -48,3 +48,23 @@ def show_detail_kpis(metrics: Metrics) -> None:
         "Time at limit", f"{metrics.pct_time_at_limit:.1f}%", help=HELP["time_at_limit"]
     )
     columns[5].metric("Time quoted", f"{metrics.pct_time_quoted:.1f}%", help=HELP["time_quoted"])
+
+
+# adverse selection: what fills were worth afterwards, and how long inventory lingers
+def show_markout_kpis(metrics: Metrics) -> None:
+    columns = st.columns(6)
+    columns[0].metric(
+        "Markout 1 s (bps)",
+        _optional(metrics.avg_markout_1s_bps, "{:,.2f}"),
+        help=HELP["markout_1s"],
+    )
+    columns[1].metric(
+        "Markout 10 s (bps)",
+        _optional(metrics.avg_markout_10s_bps, "{:,.2f}"),
+        help=HELP["markout_10s"],
+    )
+    columns[2].metric(
+        "Inventory half-life",
+        _optional(metrics.inventory_half_life_s, "{:,.1f} s"),
+        help=HELP["inventory_half_life"],
+    )

@@ -50,7 +50,6 @@ def default_form(**overrides) -> RunForm:
         "resp_latency_ms": 10.0,
         "queue_model": "power_prob",
         "queue_power": 2.0,
-        "partial_fill": False,
     }
     return RunForm.model_validate(fields | overrides)
 

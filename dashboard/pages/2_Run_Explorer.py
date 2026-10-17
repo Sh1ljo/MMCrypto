@@ -3,9 +3,10 @@ from datetime import timedelta
 import polars as pl
 import streamlit as st
 
-from dashboard.charts import colors_for, distribution_figure, run_figure
+from dashboard.charts import colors_for, distribution_figure, markout_figure, run_figure
 from dashboard.help_text import HELP
 from dashboard.lib import (
+    BPS,
     HARD_MAX_POINTS,
     NS_PER_HOUR,
     NS_PER_S,
@@ -15,11 +16,12 @@ from dashboard.lib import (
     ns_to_datetime,
     pick_resolution_ns,
     read_fills,
+    read_markouts,
     read_timeseries,
-    started_at,
+    run_label,
     time_range_ns,
 )
-from dashboard.ui import show_detail_kpis, show_kpis
+from dashboard.ui import show_detail_kpis, show_kpis, show_markout_kpis
 from mmlab.run import runs_dir
 
 AUTO = "Auto"
@@ -32,13 +34,6 @@ RESOLUTIONS_NS = {
 PLOT_CONFIG = {"displaylogo": False}
 
 
-def _run_label(run: RunInfo) -> str:
-    started = started_at(run.run_id)
-    when = f"{started:%m-%d %H:%M:%S}" if started else "unknown time"
-    name = run.record.config.name if run.record else run.run_id
-    return f"{when} - {name} - {run.status}"
-
-
 def _pick_run(runs: list[RunInfo]) -> RunInfo:
     by_id = {run.run_id: run for run in runs}
     requested = st.session_state.pop("selected_run", None)
@@ -48,7 +43,7 @@ def _pick_run(runs: list[RunInfo]) -> RunInfo:
         "Run",
         list(by_id),
         key="explorer_run",
-        format_func=lambda run_id: _run_label(by_id[run_id]),
+        format_func=lambda run_id: run_label(by_id[run_id]),
         help=HELP["explorer_run"],
     )
     return by_id[chosen]
@@ -132,6 +127,7 @@ config = run.record.config
 st.subheader("Results", help=HELP["results"])
 show_kpis(run.metrics)
 show_detail_kpis(run.metrics)
+show_markout_kpis(run.metrics)
 
 st.subheader("Overview", help=HELP["overview"])
 start_ns, end_ns = time_range_ns(run.path)
@@ -171,6 +167,17 @@ raw_steps = (
     if every_ns == config.step_ns
     else read_timeseries(run.path, window_start_ns, window_end_ns, config.step_ns, config.step_ns)
 )
+st.subheader("Markouts", help=HELP["markouts"])
+markouts = read_markouts(run.path)
+if markouts is None:
+    st.info(HELP["no_markouts"])
+else:
+    st.plotly_chart(
+        markout_figure(markouts, config.exec.maker_fee * BPS, colors),
+        theme=None,
+        config=PLOT_CONFIG,
+    )
+
 st.subheader("Distributions", help=HELP["distributions"])
 st.plotly_chart(
     distribution_figure(raw_steps, fills, config.tick_size, config.lot_size, colors),
