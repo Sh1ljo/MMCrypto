@@ -1316,7 +1316,7 @@ AI-written backtest code is where subtle bugs live. This workflow keeps it hones
 
 \- \[ ] \*\*P1:\*\* 2–3 validated days in `.npz` with manifest
 
-\- \[ ] \*\*P2:\*\* Naive market maker via CLI; artifact format frozen; first sanity tests green
+\- \[x] \*\*P2:\*\* Naive market maker via CLI; artifact format frozen; first sanity tests green
 
 \- \[ ] \*\*P3:\*\* Dashboard: launch runs and explore them in the browser
 

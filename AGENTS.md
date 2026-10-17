@@ -22,7 +22,7 @@ The full phased build guide is [plan.md](plan.md). Running notes, decisions, and
 
 ## Current status
 
-Phase 0 (setup and theory) is done except the reading and the concept write-up. Phase 1 code is written and tested on synthetic data: `mmlab/settings.py` and `mmlab/data/` (download, instruments, convert, validate, manifest, CLI). It has not yet been run on a real Tardis day. The authoritative status is in [CONTEXT.md](CONTEXT.md).
+Phase 0 (setup and theory) is done except the reading and the concept write-up. Phase 1 (data pipeline, `mmlab/data/`) is done and has run on one real Tardis day (BTCUSDT 2026-10-01); more days are still to download. Phase 2 is done: `mmlab/config.py`, `mmlab/strategies/naive.py`, `mmlab/analytics/metrics.py` and the runner `mmlab/run.py` produce a run folder, and the Phase 2 sanity tests pass. The first full-day naive result is a loss. The authoritative status is in [CONTEXT.md](CONTEXT.md).
 
 ## Commands
 
@@ -35,6 +35,7 @@ uv run ruff check .                          # lint
 uv run ruff format .                         # format
 uv run python -m mmlab.data download --symbol BTCUSDT --from 2026-09-01 --to 2026-09-02
 uv run python -m mmlab.data ingest --symbol BTCUSDT --date 2026-09-01 --max-memory-gb 8   # convert, validate, register
+uv run python -m mmlab.run --config configs/naive_btcusdt.json   # run one backtest, writes runs/<id>/
 uv run python scripts/phase0_convert.py      # convert sample data to npz
 uv run python scripts/phase0_tutorial.py     # run the Phase 0 tutorial
 uv run streamlit run dashboard/app.py        # dashboard (Phase 3, not built yet)

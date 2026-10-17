@@ -53,6 +53,8 @@ The dashboard never runs backtest logic. It writes a config, starts the runner a
 ├── runs/                  one folder per backtest run (gitignored)
 ├── mmlab/                 the library
 │   ├── settings.py        data paths (MMLAB_DATA_DIR override)
+│   ├── config.py          RunConfig / ExecConfig / RunRecord (config version 1)
+│   ├── run.py             backtest runner CLI
 │   ├── data/              download, instruments, convert, validate, manifest, CLI
 │   ├── strategies/        naive, avellaneda, glft, alpha_skew
 │   ├── calibration/       volatility, intensity (A, k)
@@ -109,10 +111,10 @@ hftbacktest repairs a crossed book by deleting the stale levels on the opposite 
 | `mmlab/data/validate.py` | Event statistics (count, span, largest gap, trades per minute) and a sampled book replay (spread in ticks, broken samples); pass/fail limits | 1 | done |
 | `mmlab/data/manifest.py` | `data/manifest.json` read, atomic upsert, version check | 1 | done |
 | `mmlab/data/__main__.py` | CLI: `download` and `ingest` (convert, validate, register) | 1 | done |
-| `mmlab/config.py` | Pydantic `RunConfig` / `ExecConfig` | 2 | planned |
-| `mmlab/strategies/naive.py` | Symmetric quoter | 2 | planned |
-| `mmlab/run.py` | CLI: `python -m mmlab.run --config ...`; builds backtest, runs strategy, saves artifacts | 2 | planned |
-| `mmlab/analytics/metrics.py` | Net/gross PnL, Sharpe, drawdown, and others (plan.md Section 7) | 2 | planned |
+| `mmlab/config.py` | Pydantic `RunConfig` / `ExecConfig` (unknown fields rejected) and `RunRecord` (config plus version, git commit, dirty flag, hftbacktest version) | 2 | done |
+| `mmlab/strategies/naive.py` | Symmetric post-only quoter, Numba-compiled; param `half_spread_ticks`; buy order ids are `2 x tick`, sell ids `2 x tick + 1`; a side is not quoted when the position limit would be passed | 2 | done |
+| `mmlab/run.py` | CLI: `python -m mmlab.run --config ...`; builds backtest, runs strategy, saves artifacts, writes `status: failed` and re-raises on error. Relative `data_files` resolve against the data dir | 2 | done |
+| `mmlab/analytics/metrics.py` | Fill inference (version 1) and summary metrics (plan.md Section 7 except markouts and inventory half-life) | 2 | done |
 | `dashboard/app.py` and `dashboard/pages/*` | Run list, run launcher, explorer, compare, sweeps, data explorer | 3 | planned |
 | `mmlab/analytics/markouts.py` | Markout curves | 4 | planned |
 | `mmlab/strategies/avellaneda.py`, `glft.py` | Inventory-aware optimal quoting | 5 | planned |
@@ -130,17 +132,17 @@ Gitignored, so present only on the machine that created them.
 | `data/npz/btcusdt_20240808.npz`, `btcusdt_20240809.npz` | Converted feed. Each covers only about 5 minutes |
 | `data/npz/btcusdt_20240808_eod.npz` | End-of-day snapshot of 08-08, used as the initial snapshot for 08-09 |
 
-No Tardis day has been downloaded yet; Phase 1 code was written and tested on synthetic data first. `data/manifest.json` is gitignored because its entries describe machine-local files.
+Real day: BTCUSDT 2026-10-01 as 24 hourly files `data/npz/btcusdt_20261001_p000.npz` to `p023.npz` (1.1 GB). `data/manifest.json` is gitignored because its entries describe machine-local files.
 
 Instrument parameters for BTCUSDT: tick size 0.1, lot size 0.001. Always re-check against exchange info for other symbols.
 
-## Interfaces (frozen once Phase 2 lands)
+## Interfaces (frozen since Phase 2)
 
-- **Config schema:** `RunConfig` and `ExecConfig`, defined in plan.md Section 2.1. Changes require a version bump written into `config.json`.
+- **Config schema:** `RunConfig` and `ExecConfig` in `mmlab/config.py` (plan.md Section 2.1), `CONFIG_VERSION = 1`. Changes require a version bump, written into `config.json` as `config_version`. `config.json` holds `config_version`, `git_commit`, `git_dirty`, `hftbacktest_version` and the `config` itself. Differences from plan.md: `queue_model` is a `Literal`, unknown fields are rejected, and `data_files` entries are relative to the data dir unless absolute.
 - **Run artifact format:** plan.md Section 2.5.
 
 ```
-runs/<date>_<time>_<name>_<hash>/
+runs/<yyyy-mm-dd>_<HHMMSS UTC>_<name>_<config hash>/
 ├── config.json         exact RunConfig used + git commit hash + hftbacktest version
 ├── metrics.json        summary metrics + status + runtime
 ├── timeseries.parquet  ts, mid, bid_quote, ask_quote, position, balance, fee, equity, num_trades
@@ -148,11 +150,17 @@ runs/<date>_<time>_<name>_<hash>/
 └── log.txt
 ```
 
+`timeseries.parquet` has one row per decision step (`step_ns`). `mid` is the book mid after the step; `bid_quote` and `ask_quote` are null when that side was not quoted. Equity is `balance + position x mid - fee`. Steps before the book is built (mid NaN, a few hundred ms) are dropped and counted in `log.txt`; a NaN mid later raises.
+
+`fills.parquet` is version 1: inferred from changes in `trading_volume`, `trading_value` and `position` between steps, so fills inside one step merge. `price` is value / volume, `side` is the sign of the position change (0 when a buy and a sell merged exactly), `mid_at_fill` is the mid of the previous step. Exact fills come in Phase 4.
+
+`metrics.json` fields: `status`, `runtime_s`, `net_pnl`, `gross_pnl`, `fees_paid`, `sharpe_hourly_annualized` (null with fewer than 2 hours or zero variance), `max_drawdown`, `traded_notional`, `traded_qty`, `return_over_trade_bps`, `fill_count`, `fills_per_hour`, `spread_captured_bps`, `mean_abs_position`, `pct_time_at_limit`, `pct_time_quoted`, `duration_h`. A failed run has `status: "failed"` and `error`. `runtime_s` is the only field that differs between identical runs.
+
 The recorder (hftbacktest 2.4.4) exposes `timestamp, price, position, balance, fee, num_trades, trading_volume, trading_value`.
 
 ## Tests
 
-`uv run pytest` runs everything with synthetic data; no downloads, no network, no real data needed. `tests/conftest.py` writes tiny Tardis-format `.csv.gz` files (one bid, one ask, an update per second, a trade every 5 seconds) with optional gaps and a book-wiping crossing. Test files: `test_settings`, `test_data_download` (download is monkeypatched), `test_data_instruments`, `test_data_convert` (including chunked conversion and snapshot-safe splitting), `test_data_validate`, `test_data_manifest`, `test_data_cli` (full ingest end to end).
+`uv run pytest` runs everything with synthetic data; no downloads, no network, no real data needed. `tests/conftest.py` writes tiny Tardis-format `.csv.gz` files (one bid, one ask, an update per second, a trade every 5 seconds) with optional gaps and a book-wiping crossing. Phase 2 tests build a tiny hftbacktest `.npz` directly (`tests/synthetic_events.py`: static book, sellers hit the bid for 30 s, then buyers lift the ask). Test files: `test_run` (run folder, no-trade, determinism, fee sign, post-only, inventory limit, failed status), `test_metrics` (hand-built curves, fill inference), `test_settings`, `test_data_download` (download is monkeypatched), `test_data_instruments`, `test_data_convert` (including chunked conversion and snapshot-safe splitting), `test_data_validate`, `test_data_manifest`, `test_data_cli` (full ingest end to end).
 
 ## Library notes
 
@@ -166,7 +174,7 @@ The recorder (hftbacktest 2.4.4) exposes `timestamp, price, position, balance, f
 
 ## Commands
 
-See the Commands section of [AGENTS.md](../AGENTS.md).
+Runner: `uv run python -m mmlab.run --config configs/naive_btcusdt.json` writes a run folder under `runs/`. Other commands are in the Commands section of [AGENTS.md](../AGENTS.md).
 
 ## Data storage
 

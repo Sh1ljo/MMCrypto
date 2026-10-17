@@ -1,0 +1,47 @@
+{
+  "name": "naive_btcusdt",
+  "strategy": "naive",
+  "data_files": [
+    "npz/btcusdt_20261001_p000.npz",
+    "npz/btcusdt_20261001_p001.npz",
+    "npz/btcusdt_20261001_p002.npz",
+    "npz/btcusdt_20261001_p003.npz",
+    "npz/btcusdt_20261001_p004.npz",
+    "npz/btcusdt_20261001_p005.npz",
+    "npz/btcusdt_20261001_p006.npz",
+    "npz/btcusdt_20261001_p007.npz",
+    "npz/btcusdt_20261001_p008.npz",
+    "npz/btcusdt_20261001_p009.npz",
+    "npz/btcusdt_20261001_p010.npz",
+    "npz/btcusdt_20261001_p011.npz",
+    "npz/btcusdt_20261001_p012.npz",
+    "npz/btcusdt_20261001_p013.npz",
+    "npz/btcusdt_20261001_p014.npz",
+    "npz/btcusdt_20261001_p015.npz",
+    "npz/btcusdt_20261001_p016.npz",
+    "npz/btcusdt_20261001_p017.npz",
+    "npz/btcusdt_20261001_p018.npz",
+    "npz/btcusdt_20261001_p019.npz",
+    "npz/btcusdt_20261001_p020.npz",
+    "npz/btcusdt_20261001_p021.npz",
+    "npz/btcusdt_20261001_p022.npz",
+    "npz/btcusdt_20261001_p023.npz"
+  ],
+  "tick_size": 0.1,
+  "lot_size": 0.001,
+  "step_ns": 100000000,
+  "order_qty": 0.001,
+  "max_position": 0.01,
+  "params": {
+    "half_spread_ticks": 5
+  },
+  "exec": {
+    "maker_fee": 0.0002,
+    "taker_fee": 0.0005,
+    "entry_latency_ns": 10000000,
+    "resp_latency_ns": 10000000,
+    "queue_model": "power_prob",
+    "queue_power": 2.0,
+    "partial_fill": false
+  }
+}
